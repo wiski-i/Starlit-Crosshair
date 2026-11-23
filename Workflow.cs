@@ -259,18 +259,18 @@ namespace NativeVcrdbCrosshair
             if (name == null) return;
             string tags;
             if (config.Library.Tags.TryGetValue(name, out tags)) card.SecondaryText = tags;
-            var menu = new ContextMenu();
-            menu.MenuItems.Add(UiText.Get("Etiketler ve favori kısayolu"), delegate { EditProfileDetails(name); });
-            menu.MenuItems.Add(UiText.Get("Kopyasını Kaydet"), delegate { SaveDesignCopy(design, name + UiText.Get(" kopya")); });
-            menu.MenuItems.Add(UiText.Get("Sil"), delegate { DeleteSavedProfile(name); });
-            card.ContextMenu = menu;
+            var menu = new DarkMenu();
+            menu.Add(UiText.Get("Etiketler ve favori kısayolu"), delegate { EditProfileDetails(name); });
+            menu.Add(UiText.Get("Kopyasını Kaydet"), delegate { SaveDesignCopy(design, name + UiText.Get(" kopya")); });
+            menu.Add(UiText.Get("Sil"), delegate { DeleteSavedProfile(name); });
+            card.ContextMenuStrip = menu;
             card.Disposed += delegate { menu.Dispose(); };
             card.DeleteRequested += delegate { DeleteSavedProfile(name); };
         }
 
         private void DeleteSavedProfile(string name)
         {
-            if (MessageBox.Show(this, string.Format(UiText.Get("“{0}” profili silinsin mi?"), name), UiText.Get("Profili sil"),
+            if (DarkMessage.Show(this, string.Format(UiText.Get("“{0}” profili silinsin mi?"), name), UiText.Get("Profili sil"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             try
             {

@@ -108,7 +108,7 @@ namespace NativeVcrdbCrosshair
             {
                 string previous = library.Shortcuts[Slot];
                 if (previous != null && !String.Equals(previous, ProfileName, StringComparison.OrdinalIgnoreCase) &&
-                    MessageBox.Show(this, string.Format(UiText.Get("Bu kısayol “{0}” profiline atanmış. Yeni profile taşınsın mı?"), previous),
+                    DarkMessage.Show(this, string.Format(UiText.Get("Bu kısayol “{0}” profiline atanmış. Yeni profile taşınsın mı?"), previous),
                         Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             }
             DialogResult = DialogResult.OK;
@@ -281,6 +281,122 @@ namespace NativeVcrdbCrosshair
             internal readonly bool Exists;
             internal PackRow(string name, VcrdbSettings design, bool exists) { Name = name; Design = design; Exists = exists; }
             public override string ToString() { return Exists ? Name + UiText.Get(" · Yerelde var") : Name; }
+        }
+    }
+
+    /// <summary>MessageBox replacement in the app palette; the system box stays light and dated.</summary>
+    internal sealed class DarkMessage : WorkflowDialog
+    {
+        private const int Width_ = 420, Gutter = 22;
+
+        private DarkMessage(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+            : base(caption, new Size(Width_, 100))
+        {
+            Font = new Font("Segoe UI", 10F);
+            if (icon == MessageBoxIcon.Warning || icon == MessageBoxIcon.Error) System.Media.SystemSounds.Exclamation.Play();
+            else if (icon == MessageBoxIcon.Question) System.Media.SystemSounds.Question.Play();
+
+            Size body = TextRenderer.MeasureText(text, Font, new Size(Width_ - Gutter * 2, 0),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+            var label = new Label
+            {
+                Text = text, UseMnemonic = false, ForeColor = Theme.Text,
+                Bounds = new Rectangle(Gutter, 20, Width_ - Gutter * 2, body.Height + 4)
+            };
+            Controls.Add(label);
+
+            int top = label.Bottom + 22;
+            bool ask = buttons == MessageBoxButtons.YesNo;
+            if (ask)
+            {
+                Answer(UiText.Get("Evet"), Width_ - Gutter - 192, top, DialogResult.Yes, true);
+                Answer(UiText.Get("Hayır"), Width_ - Gutter - 92, top, DialogResult.No, false);
+            }
+            else Answer(UiText.Get("Tamam"), Width_ - Gutter - 92, top, DialogResult.OK, true);
+            // The primary button is the first tab stop, so Enter answers it and Tab reaches the other.
+            ClientSize = new Size(Width_, top + 34 + 20);
+        }
+
+        private ModernButton Answer(string text, int x, int y, DialogResult result, bool primary)
+        {
+            return ActionButton(text, x, y, 92, delegate { DialogResult = result; Close(); }, primary);
+        }
+
+        internal static DialogResult Show(string text, string caption)
+        {
+            return Show(null, text, caption, MessageBoxButtons.OK, MessageBoxIcon.None);
+        }
+
+        internal static DialogResult Show(IWin32Window owner, string text, string caption)
+        {
+            return Show(owner, text, caption, MessageBoxButtons.OK, MessageBoxIcon.None);
+        }
+
+        internal static DialogResult Show(IWin32Window owner, string text, string caption,
+            MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            using (var dialog = new DarkMessage(text, caption, buttons, icon))
+            {
+                if (owner == null) dialog.StartPosition = FormStartPosition.CenterScreen;
+                return owner == null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+            }
+        }
+    }
+
+    /// <summary>Context menu drawn in the app palette instead of the light Win32 menu.</summary>
+    internal sealed class DarkMenu : ContextMenuStrip
+    {
+        internal DarkMenu()
+        {
+            Renderer = new DarkMenuRenderer();
+            ShowImageMargin = false;
+            Font = new Font("Segoe UI", 9.75F);
+            Padding = new Padding(2, 4, 2, 4);
+        }
+
+        internal ToolStripMenuItem Add(string text, EventHandler click)
+        {
+            var item = new ToolStripMenuItem(text, null, click) { Padding = new Padding(4, 3, 4, 3) };
+            Items.Add(item);
+            return item;
+        }
+
+        private sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
+        {
+            internal DarkMenuRenderer() : base(new DarkMenuColors()) { RoundedEdges = false; }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                e.TextColor = e.Item.Enabled ? Theme.Text : Theme.TextDim;
+                base.OnRenderItemText(e);
+            }
+
+            protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+            {
+                e.ArrowColor = Theme.TextDim;
+                base.OnRenderArrow(e);
+            }
+
+            protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+            {
+                int y = e.Item.Height / 2;
+                using (var pen = new Pen(Theme.Border)) e.Graphics.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+            }
+        }
+
+        private sealed class DarkMenuColors : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground { get { return Theme.BgPanel; } }
+            public override Color MenuBorder { get { return Theme.Border; } }
+            public override Color MenuItemBorder { get { return Theme.BgPanelAlt; } }
+            public override Color MenuItemSelected { get { return Theme.BgPanelAlt; } }
+            public override Color MenuItemSelectedGradientBegin { get { return Theme.BgPanelAlt; } }
+            public override Color MenuItemSelectedGradientEnd { get { return Theme.BgPanelAlt; } }
+            public override Color MenuItemPressedGradientBegin { get { return Theme.BgCard; } }
+            public override Color MenuItemPressedGradientEnd { get { return Theme.BgCard; } }
+            public override Color ImageMarginGradientBegin { get { return Theme.BgPanel; } }
+            public override Color ImageMarginGradientMiddle { get { return Theme.BgPanel; } }
+            public override Color ImageMarginGradientEnd { get { return Theme.BgPanel; } }
         }
     }
 }

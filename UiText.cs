@@ -38,6 +38,8 @@ namespace NativeVcrdbCrosshair
             { "Canlı nişangâh önizlemesi", "Live crosshair preview" },
             { "Tuş kombinasyonuna bas...", "Press a key combination..." },
             { "Tamam", "OK" },
+            { "Evet", "Yes" },
+            { "Hayır", "No" },
             { "İptal", "Cancel" },
             { "GÖRÜNÜR", "VISIBLE" },
             { "GİZLİ", "HIDDEN" },

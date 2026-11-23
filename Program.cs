@@ -58,7 +58,7 @@ namespace NativeVcrdbCrosshair
                 if (!acquired)
                 {
                     UiText.UseEnglish = ConfigManager.Load().EnglishUi;
-                    MessageBox.Show(UiText.Get("Crosshair zaten açık. Bildirim alanındaki simgeyi kullan."), "VCRDB Crosshair");
+                    DarkMessage.Show(UiText.Get("Crosshair zaten açık. Bildirim alanındaki simgeyi kullan."), "VCRDB Crosshair");
                     return;
                 }
                 try { using (var form = new MainForm()) Application.Run(form); }
@@ -1590,7 +1590,7 @@ namespace NativeVcrdbCrosshair
 
         protected override void OnMouseClick(MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Right && ContextMenu == null && ProfileName != null && DeleteRequested != null)
+            if (e.Button == MouseButtons.Right && ContextMenuStrip == null && ProfileName != null && DeleteRequested != null)
                 DeleteRequested(this, EventArgs.Empty);
             base.OnMouseClick(e);
         }
@@ -1927,11 +1927,11 @@ namespace NativeVcrdbCrosshair
         private NotifyIcon trayIcon;
         private GameProfileWatcher gameProfiles;
         private VcrdbSettings automaticProfile;
-        private MenuItem activeGameMenu;
+        private ToolStripMenuItem activeGameMenu;
         private ModernButton[] markerButtons;
         private ToggleSwitch roundedArms;
         private ModernSlider topLength, rightLength, bottomLength, leftLength;
-        private MenuItem overlayMenuItem;
+        private ToolStripMenuItem overlayMenuItem;
         private Icon appIcon;
         private Bitmap titleLogo;
         private PreviewPanel preview;
@@ -2090,7 +2090,7 @@ namespace NativeVcrdbCrosshair
                 if (overlay != null) overlay.Dispose();
                 if (trayIcon != null)
                 {
-                    ContextMenu menu = trayIcon.ContextMenu;
+                    ContextMenuStrip menu = trayIcon.ContextMenuStrip;
                     trayIcon.Dispose();
                     if (menu != null) menu.Dispose();
                 }
@@ -2811,7 +2811,7 @@ namespace NativeVcrdbCrosshair
                 ShowProfileError(UiText.Get("1–40 karakterli geçerli bir dosya adı kullan."));
                 return;
             }
-            if (ConfigManager.ProfileExists(name) && MessageBox.Show(this, string.Format(UiText.Get("'{0}' güncellensin mi?"), name),
+            if (ConfigManager.ProfileExists(name) && DarkMessage.Show(this, string.Format(UiText.Get("'{0}' güncellensin mi?"), name),
                 UiText.Get("Profili güncelle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             try { ConfigManager.SaveProfile(name, settings); }
             catch (IOException) { ShowProfileError(UiText.Get("Profil kaydedilemedi.")); return; }
@@ -2853,7 +2853,7 @@ namespace NativeVcrdbCrosshair
             if (!calibrating) overlay.UpdateSettings(EffectiveDesign);
             if (activeGameMenu != null)
             {
-                activeGameMenu.Visible = name != null;
+                activeGameMenu.Available = name != null;
                 activeGameMenu.Text = name == null ? "" : UiText.Get("Oyun profili: ") + name;
             }
         }
@@ -2875,7 +2875,7 @@ namespace NativeVcrdbCrosshair
                         result = pack.Import(previewPack.Selected);
                     }
                     if (result.Imported > 0) ProfilesChanged();
-                    MessageBox.Show(this, String.Format(UiText.Get("{0} eklendi · {1} aynı ad korundu · {2} yazılamadı"),
+                    DarkMessage.Show(this, String.Format(UiText.Get("{0} eklendi · {1} aynı ad korundu · {2} yazılamadı"),
                         result.Imported, result.Skipped, result.Failed), UiText.Get("Profil paketi"),
                         MessageBoxButtons.OK, result.Failed == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
                 }
@@ -2907,7 +2907,7 @@ namespace NativeVcrdbCrosshair
 
         private void ShowProfileError(string message)
         {
-            MessageBox.Show(this, message, UiText.Get("Profil"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            DarkMessage.Show(this, message, UiText.Get("Profil"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private VcrdbSettings BuildPreset(int index)
@@ -3158,7 +3158,7 @@ namespace NativeVcrdbCrosshair
             var reset = OptionButton(page, UiText.Get("Nişangâhı Sıfırla"), px, 493, 164);
             reset.Click += delegate
             {
-                if (MessageBox.Show(this, UiText.Get("Nişangâh varsayılan tasarıma dönsün mü?"), UiText.Get("Sıfırla"),
+                if (DarkMessage.Show(this, UiText.Get("Nişangâh varsayılan tasarıma dönsün mü?"), UiText.Get("Sıfırla"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                     ApplySettingsObject(new VcrdbSettings());
             };
@@ -3212,11 +3212,11 @@ namespace NativeVcrdbCrosshair
                 {
                     config.EnglishUi = !english;
                     language.SelectedIndex = config.EnglishUi ? 1 : 0;
-                    MessageBox.Show(this, UiText.Get("Dil tercihi kaydedilemedi."), caption,
+                    DarkMessage.Show(this, UiText.Get("Dil tercihi kaydedilemedi."), caption,
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                MessageBox.Show(this, UiText.Get("Dil bir sonraki açılışta değişecek."), caption);
+                DarkMessage.Show(this, UiText.Get("Dil bir sonraki açılışta değişecek."), caption);
             };
             page.Controls.Add(language);
         }
@@ -3546,33 +3546,33 @@ namespace NativeVcrdbCrosshair
 
         private void RebuildTrayMenu()
         {
-            ContextMenu menu = new ContextMenu();
-            menu.MenuItems.Add(UiText.Get("Ayarları Aç"), delegate (object s, EventArgs e) { ShowFromTray(); });
-            overlayMenuItem = new MenuItem();
-            overlayMenuItem.Click += OnStatusToggle;
+            var menu = new DarkMenu();
+            menu.Add(UiText.Get("Ayarları Aç"), delegate { ShowFromTray(); });
+            overlayMenuItem = menu.Add("", OnStatusToggle);
             UpdateOverlayMenuText();
-            menu.MenuItems.Add(overlayMenuItem);
-            string activeTitle = activeGameMenu == null || !activeGameMenu.Visible ? null : activeGameMenu.Text;
-            activeGameMenu = new MenuItem(activeTitle ?? "") { Enabled = false, Visible = activeTitle != null };
-            menu.MenuItems.Add(activeGameMenu);
+            string activeTitle = activeGameMenu == null || !activeGameMenu.Available ? null : activeGameMenu.Text;
+            activeGameMenu = menu.Add(activeTitle ?? "", null);
+            activeGameMenu.Enabled = false;
+            activeGameMenu.Available = activeTitle != null;
 
-            MenuItem profilesItem = new MenuItem(UiText.Get("Profiller"));
+            var profilesItem = new ToolStripMenuItem(UiText.Get("Profiller"));
+            profilesItem.DropDown = new DarkMenu();
             List<string> profiles = ConfigManager.ListProfiles();
-            if (profiles.Count == 0) { MenuItem none = new MenuItem(UiText.Get("(boş)")); none.Enabled = false; profilesItem.MenuItems.Add(none); }
+            if (profiles.Count == 0) profilesItem.DropDownItems.Add(new ToolStripMenuItem(UiText.Get("(boş)")) { Enabled = false });
             else foreach (string pn in profiles)
             {
                 string nameCopy = pn;
-                profilesItem.MenuItems.Add(pn, delegate (object s, EventArgs e)
+                profilesItem.DropDownItems.Add(pn, null, delegate
                 {
                     VcrdbSettings ps = ConfigManager.LoadProfile(nameCopy);
                     if (ps != null) ApplySettingsObject(ps);
                 });
             }
-            menu.MenuItems.Add(profilesItem);
-            menu.MenuItems.Add("-");
-            menu.MenuItems.Add(UiText.Get("Çıkış"), delegate (object s, EventArgs e) { Application.Exit(); });
-            ContextMenu previous = trayIcon.ContextMenu;
-            trayIcon.ContextMenu = menu;
+            menu.Items.Add(profilesItem);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Add(UiText.Get("Çıkış"), delegate { Application.Exit(); });
+            ContextMenuStrip previous = trayIcon.ContextMenuStrip;
+            trayIcon.ContextMenuStrip = menu;
             if (previous != null) previous.Dispose();
         }
 
