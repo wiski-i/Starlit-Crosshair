@@ -94,7 +94,7 @@ namespace NativeVcrdbCrosshair
                 if (assigned && !favoriteKeysRegistered[i]) unavailable = true;
             }
             if (unavailable)
-                SetNotice("Favori kısayollarından biri kullanılıyor. Yeni profil ayarından başka bir yuva seç.");
+                SetNotice(UiText.Get("Favori kısayollarından biri kullanılıyor. Yeni profil ayarından başka bir yuva seç."));
         }
 
         private bool HandleFavoriteShortcut(int id)
@@ -160,53 +160,53 @@ namespace NativeVcrdbCrosshair
 
         private void AddEditorActions(Panel page, int x)
         {
-            undoButton = OptionButton(page, "Geri Al", x, 626, 77);
-            undoButton.AccessibleName = "Geri al (Ctrl+Z)";
+            undoButton = OptionButton(page, UiText.Get("Geri Al"), x, 626, 77);
+            undoButton.AccessibleName = UiText.Get("Geri al (Ctrl+Z)");
             undoButton.Click += delegate { ChangeHistory(false); };
-            redoButton = OptionButton(page, "Yinele", x + 85, 626, 77);
-            redoButton.AccessibleName = "Yinele (Ctrl+Y)";
+            redoButton = OptionButton(page, UiText.Get("Yinele"), x + 85, 626, 77);
+            redoButton.AccessibleName = UiText.Get("Yinele (Ctrl+Y)");
             redoButton.Click += delegate { ChangeHistory(true); };
-            OptionButton(page, "Tasarımı Kopyala", x + 171, 626, 145).Click += delegate { SaveDesignCopy(settings, "Tasarım kopyası"); };
+            OptionButton(page, UiText.Get("Tasarımı Kopyala"), x + 171, 626, 145).Click += delegate { SaveDesignCopy(settings, UiText.Get("Tasarım kopyası")); };
             UpdateHistoryButtons();
         }
 
         private void SaveDesignCopy(VcrdbSettings design, string proposed)
         {
-            const string suffix = " kopya";
+            string suffix = UiText.Get(" kopya");
             if (proposed.Length > 40) proposed = proposed.Substring(0, 40 - suffix.Length).TrimEnd() + suffix;
-            string name = PromptForm.ShowDialog(this, "Yeni profil adı:", proposed);
+            string name = PromptForm.ShowDialog(this, UiText.Get("Yeni profil adı:"), proposed);
             if (name == null || name.Trim().Length == 0) return;
             name = name.Trim();
             if (!ConfigManager.IsValidProfileName(name))
             {
-                ShowProfileError("Yeni kopya için 1–40 karakterli geçerli bir ad kullan.");
+                ShowProfileError(UiText.Get("Yeni kopya için 1–40 karakterli geçerli bir ad kullan."));
                 return;
             }
             try
             {
                 if (!ConfigManager.TryAddProfile(name, design))
                 {
-                    ShowProfileError("Bu ad zaten kullanılıyor. Kopya için farklı bir ad seç.");
+                    ShowProfileError(UiText.Get("Bu ad zaten kullanılıyor. Kopya için farklı bir ad seç."));
                     return;
                 }
                 ProfilesChanged();
-                SetNotice("Tasarım kopyalandı: " + name);
+                SetNotice(UiText.Get("Tasarım kopyalandı: ") + name);
             }
-            catch (IOException) { ShowProfileError("Tasarım kopyalanamadı."); }
-            catch (UnauthorizedAccessException) { ShowProfileError("Profil klasörüne yazma izni yok."); }
+            catch (IOException) { ShowProfileError(UiText.Get("Tasarım kopyalanamadı.")); }
+            catch (UnauthorizedAccessException) { ShowProfileError(UiText.Get("Profil klasörüne yazma izni yok.")); }
         }
 
         private void AddLibraryTools(Panel page)
         {
-            profileSearch = MakeTextBox(page, "Profil adı veya etiketle ara", 28, 137, 229);
+            profileSearch = MakeTextBox(page, UiText.Get("Profil adı veya etiketle ara"), 28, 137, 229);
             profileSearch.MaxLength = 160;
             profileSearch.TextChanged += delegate { RebuildGallery(); };
             profileSearch.Name = "ProfileSearch";
-            favoritesFilter = OptionButton(page, "Favoriler", 265, 133, 98);
+            favoritesFilter = OptionButton(page, UiText.Get("Favoriler"), 265, 133, 98);
             favoritesFilter.Click += delegate { favoritesFilter.Selected = !favoritesFilter.Selected; RebuildGallery(); };
-            OptionButton(page, "Yan Yana Kıyasla", 372, 133, 145).Click += CompareProfiles;
-            OptionButton(page, "Etiket ve Kısayol", 28, 174, 156).Click += delegate { EditProfileDetails(null); };
-            MakeRowLabel(page, "Üstte profil adı veya etiketle ara.", 198, 178);
+            OptionButton(page, UiText.Get("Yan Yana Kıyasla"), 372, 133, 145).Click += CompareProfiles;
+            OptionButton(page, UiText.Get("Etiket ve Kısayol"), 28, 174, 156).Click += delegate { EditProfileDetails(null); };
+            MakeRowLabel(page, UiText.Get("Üstte profil adı veya etiketle ara."), 198, 178);
         }
 
         private List<KeyValuePair<string, VcrdbSettings>> SavedDesigns()
@@ -225,12 +225,12 @@ namespace NativeVcrdbCrosshair
         {
             var designs = new List<KeyValuePair<string, VcrdbSettings>>
             {
-                new KeyValuePair<string, VcrdbSettings>("Editördeki tasarım", settings.Clone())
+                new KeyValuePair<string, VcrdbSettings>(UiText.Get("Editördeki tasarım"), settings.Clone())
             };
             foreach (var item in SavedDesigns())
-                designs.Add(new KeyValuePair<string, VcrdbSettings>("Profil · " + item.Key, item.Value));
+                designs.Add(new KeyValuePair<string, VcrdbSettings>(UiText.Get("Profil · ") + item.Key, item.Value));
             for (int i = 0; i < PresetNames.Length; i++)
-                designs.Add(new KeyValuePair<string, VcrdbSettings>("Yerleşik · " + PresetNames[i], BuildPreset(i)));
+                designs.Add(new KeyValuePair<string, VcrdbSettings>(UiText.Get("Yerleşik · ") + UiText.Get(PresetNames[i]), BuildPreset(i)));
 
             using (var dialog = new CompareProfilesDialog(designs, Screen.FromControl(this).WorkingArea.Size))
                 dialog.ShowDialog(this);
@@ -241,7 +241,7 @@ namespace NativeVcrdbCrosshair
             var profiles = ConfigManager.ListProfiles();
             if (profiles.Count == 0)
             {
-                SetNotice("Etiket veya kısayol eklemek için önce bir profil kaydet.");
+                SetNotice(UiText.Get("Etiket veya kısayol eklemek için önce bir profil kaydet."));
                 return;
             }
             using (var dialog = new ProfileDetailsDialog(profiles, config.Library, preferred))
@@ -260,9 +260,9 @@ namespace NativeVcrdbCrosshair
             string tags;
             if (config.Library.Tags.TryGetValue(name, out tags)) card.SecondaryText = tags;
             var menu = new ContextMenu();
-            menu.MenuItems.Add("Etiketler ve favori kısayolu", delegate { EditProfileDetails(name); });
-            menu.MenuItems.Add("Kopyasını Kaydet", delegate { SaveDesignCopy(design, name + " kopya"); });
-            menu.MenuItems.Add("Sil", delegate { DeleteSavedProfile(name); });
+            menu.MenuItems.Add(UiText.Get("Etiketler ve favori kısayolu"), delegate { EditProfileDetails(name); });
+            menu.MenuItems.Add(UiText.Get("Kopyasını Kaydet"), delegate { SaveDesignCopy(design, name + UiText.Get(" kopya")); });
+            menu.MenuItems.Add(UiText.Get("Sil"), delegate { DeleteSavedProfile(name); });
             card.ContextMenu = menu;
             card.Disposed += delegate { menu.Dispose(); };
             card.DeleteRequested += delegate { DeleteSavedProfile(name); };
@@ -270,7 +270,7 @@ namespace NativeVcrdbCrosshair
 
         private void DeleteSavedProfile(string name)
         {
-            if (MessageBox.Show(this, "“" + name + "” profili silinsin mi?", "Profili sil",
+            if (MessageBox.Show(this, string.Format(UiText.Get("“{0}” profili silinsin mi?"), name), UiText.Get("Profili sil"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             try
             {
@@ -279,8 +279,8 @@ namespace NativeVcrdbCrosshair
                 ProfilesChanged();
                 ScheduleSave();
             }
-            catch (IOException) { ShowProfileError("Profil silinemedi."); }
-            catch (UnauthorizedAccessException) { ShowProfileError("Profili silme izni yok."); }
+            catch (IOException) { ShowProfileError(UiText.Get("Profil silinemedi.")); }
+            catch (UnauthorizedAccessException) { ShowProfileError(UiText.Get("Profili silme izni yok.")); }
         }
 
         private void OpenCalibration(object sender, EventArgs e)
@@ -299,7 +299,7 @@ namespace NativeVcrdbCrosshair
             overlay.SetDrawEnabled(true);
             try
             {
-                using (var dialog = new CalibrationDialog("Hedef ekran · " + DisplayName(device), previous, offset =>
+                using (var dialog = new CalibrationDialog(UiText.Get("Hedef ekran · ") + DisplayName(device), previous, offset =>
                 {
                     calibrationOffset = offset;
                     overlay.RefreshLayer();

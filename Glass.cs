@@ -93,7 +93,7 @@ namespace NativeVcrdbCrosshair
         {
             this.color = color;
             AccessibleRole = AccessibleRole.PushButton;
-            AccessibleName = "Renk #" + (color.ToArgb() & 0xFFFFFF).ToString("X6");
+            AccessibleName = UiText.Get("Renk #") + (color.ToArgb() & 0xFFFFFF).ToString("X6");
             Cursor = Cursors.Hand;
             SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }

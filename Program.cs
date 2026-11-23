@@ -57,7 +57,8 @@ namespace NativeVcrdbCrosshair
                 catch (AbandonedMutexException) { acquired = true; }
                 if (!acquired)
                 {
-                    MessageBox.Show("Crosshair zaten açık. Bildirim alanındaki simgeyi kullan.", "VCRDB Crosshair");
+                    UiText.UseEnglish = ConfigManager.Load().EnglishUi;
+                    MessageBox.Show(UiText.Get("Crosshair zaten açık. Bildirim alanındaki simgeyi kullan."), "VCRDB Crosshair");
                     return;
                 }
                 try { using (var form = new MainForm()) Application.Run(form); }
@@ -107,6 +108,86 @@ namespace NativeVcrdbCrosshair
             AccentInk = Anim.LerpColor(Accent, Color.White, 0.67f);
             AccentHover = Anim.LerpColor(Accent, Color.White, 0.13f);
             AccentPressed = Anim.LerpColor(Accent, Color.Black, 0.16f);
+        }
+
+        internal static void ApplyDialogFrame(IntPtr window)
+        {
+            if (SystemInformation.HighContrast) return;
+
+            const int ImmersiveDarkMode = 20, BorderColor = 34, CaptionColor = 35, TextColor = 36;
+            int dark = 1;
+            if (DwmSetWindowAttribute(window, ImmersiveDarkMode, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(window, 19, ref dark, sizeof(int));
+            SetFrameColor(window, BorderColor, Border);
+            SetFrameColor(window, CaptionColor, BgPanel);
+            SetFrameColor(window, TextColor, Text);
+        }
+
+        private static void SetFrameColor(IntPtr window, int attribute, Color color)
+        {
+            int value = ColorTranslator.ToWin32(color);
+            DwmSetWindowAttribute(window, attribute, ref value, sizeof(int));
+        }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr window, string subApp, string subIdList);
+
+        /// <summary>Gives a scrolling container dark Windows scrollbars instead of the light default.</summary>
+        internal static void DarkScrollbars(Control control)
+        {
+            control.HandleCreated += delegate
+            {
+                if (!SystemInformation.HighContrast) SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
+            };
+        }
+
+        /// <summary>Draws a drop-down list in the app palette; the themed default stays white.</summary>
+        internal static void DarkPicker(ComboBox box)
+        {
+            box.FlatStyle = FlatStyle.Flat;
+            box.DrawMode = DrawMode.OwnerDrawFixed;
+            box.BackColor = BgPanelAlt;
+            box.ForeColor = Text;
+            box.DrawItem += delegate(object sender, DrawItemEventArgs e)
+            {
+                Color fill = (e.State & DrawItemState.Selected) != 0 ? Accent : BgPanelAlt;
+                using (var brush = new SolidBrush(fill)) e.Graphics.FillRectangle(brush, e.Bounds);
+                if (e.Index >= 0)
+                    TextRenderer.DrawText(e.Graphics, box.Items[e.Index].ToString(), box.Font, e.Bounds, Text,
+                        TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                e.DrawFocusRectangle();
+            };
+            // FlatStyle still paints the border and arrow button in system colors.
+            box.HandleCreated += delegate { new PickerChrome(box).AssignHandle(box.Handle); };
+        }
+
+        private sealed class PickerChrome : NativeWindow
+        {
+            private readonly ComboBox box;
+            internal PickerChrome(ComboBox box) { this.box = box; }
+
+            protected override void WndProc(ref Message m)
+            {
+                base.WndProc(ref m);
+                if (m.Msg != 0x000F || SystemInformation.HighContrast) return;
+                Rectangle r = box.ClientRectangle;
+                int buttonWidth = SystemInformation.VerticalScrollBarWidth + 2;
+                var button = new Rectangle(r.Right - buttonWidth, r.Top, buttonWidth, r.Height);
+                using (Graphics g = Graphics.FromHwnd(box.Handle))
+                using (var fill = new SolidBrush(BgPanelAlt))
+                using (var edge = new Pen(box.Focused ? Accent : Border))
+                using (var ink = new Pen(TextDim, 1.6f))
+                {
+                    g.FillRectangle(fill, button);
+                    g.DrawRectangle(edge, r.X, r.Y, r.Width - 1, r.Height - 1);
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    float cx = button.X + button.Width / 2f, cy = r.Height / 2f;
+                    g.DrawLines(ink, new[] { new PointF(cx - 4, cy - 2), new PointF(cx, cy + 2), new PointF(cx + 4, cy - 2) });
+                }
+            }
         }
 
         public static Color AccentColor(AccentTheme t)
@@ -609,6 +690,7 @@ namespace NativeVcrdbCrosshair
         public VcrdbSettings Settings;
         public AccentTheme Accent;
         public GlassMaterial Material;
+        internal bool EnglishUi;
         public bool HkCtrl, HkAlt, HkShift;
         public Keys HkKey;
         public string MonitorDevice = "";
@@ -674,6 +756,7 @@ namespace NativeVcrdbCrosshair
                     d.TryGetValue("MonitorDevice", out c.MonitorDevice);
                     c.BackgroundPulse = VcrdbSettings.GetInt(d, "BackgroundPulse", 0) == 1;
                     c.HoldVisibility = VcrdbSettings.GetInt(d, "HoldVisibility", 0) == 1;
+                    c.EnglishUi = VcrdbSettings.GetInt(d, "EnglishUi", 0) == 1;
                     c.Library.Load(d);
                     int material = VcrdbSettings.GetInt(d, "Material", 0);
                     foreach (var item in d)
@@ -705,6 +788,7 @@ namespace NativeVcrdbCrosshair
                 sb.AppendLine("MonitorDevice=" + c.MonitorDevice);
                 sb.AppendLine("BackgroundPulse=" + (c.BackgroundPulse ? 1 : 0));
                 sb.AppendLine("HoldVisibility=" + (c.HoldVisibility ? 1 : 0));
+                sb.AppendLine("EnglishUi=" + (c.EnglishUi ? 1 : 0));
                 c.Library.Append(sb);
                 sb.AppendLine("Material=" + (int)c.Material);
                 foreach (var item in c.GameProfiles) sb.AppendLine("Game." + item.Key + "=" + item.Value);
@@ -1229,7 +1313,7 @@ namespace NativeVcrdbCrosshair
             timer = new System.Windows.Forms.Timer();
             timer.Interval = 15;
             timer.Tick += new EventHandler(OnTick);
-            AccessibleName = "Nişangâh bileşenleri";
+            AccessibleName = UiText.Get("Nişangâh bileşenleri");
             Layout2();
         }
 
@@ -1366,7 +1450,7 @@ namespace NativeVcrdbCrosshair
             pulseTimer = new Timer { Interval = 33 };
             pulseTimer.Tick += delegate { phase = (phase + 0.18f) % ((float)Math.PI * 2); Invalidate(); };
             VisibleChanged += delegate { SyncAnimation(); };
-            AccessibleName = "Canlı nişangâh önizlemesi";
+            AccessibleName = UiText.Get("Canlı nişangâh önizlemesi");
             AccessibleRole = AccessibleRole.Graphic;
         }
 
@@ -1697,7 +1781,7 @@ namespace NativeVcrdbCrosshair
             using (Pen pen = new Pen(focusedBox ? Theme.Accent : Theme.Border, focusedBox ? 1.6f : 1f))
             using (GraphicsPath p = Draw.RoundRect(0, 0, this.Width - 1, this.Height - 1, 8))
                 g.DrawPath(pen, p);
-            string txt = focusedBox ? "Tuş kombinasyonuna bas..." : ComboText();
+            string txt = focusedBox ? UiText.Get("Tuş kombinasyonuna bas...") : ComboText();
             TextRenderer.DrawText(g, txt, this.Font, this.ClientRectangle, Theme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             if (focusedBox) Glass.FocusRing(g, ClientRectangle);
         }
@@ -1736,12 +1820,12 @@ namespace NativeVcrdbCrosshair
             border.Controls.Add(box);
 
             ModernButton ok = new ModernButton();
-            ok.Text = "Tamam"; ok.Location = new Point(178, 100); ok.Size = new Size(76, 34);
+            ok.Text = UiText.Get("Tamam"); ok.Location = new Point(178, 100); ok.Size = new Size(76, 34);
             ok.Click += new EventHandler(OnOk);
             border.Controls.Add(ok);
 
             ModernButton cancel = new ModernButton();
-            cancel.Text = "İptal"; cancel.Ghost = true; cancel.Location = new Point(262, 100); cancel.Size = new Size(76, 34);
+            cancel.Text = UiText.Get("İptal"); cancel.Ghost = true; cancel.Location = new Point(262, 100); cancel.Size = new Size(76, 34);
             cancel.Click += new EventHandler(OnCancel);
             border.Controls.Add(cancel);
 
@@ -1805,7 +1889,8 @@ namespace NativeVcrdbCrosshair
             using (SolidBrush db = new SolidBrush(dot))
                 g.FillEllipse(db, 14, this.Height / 2 - 4, 8, 8);
             Rectangle tr = new Rectangle(28, 0, this.Width - 32, this.Height);
-            TextRenderer.DrawText(g, on ? "GÖRÜNÜR" : "GİZLİ", this.Font, tr, Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, UiText.Get(on ? "GÖRÜNÜR" : "GİZLİ"), this.Font, tr, Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             base.OnPaint(e);
         }
     }
@@ -1890,6 +1975,7 @@ namespace NativeVcrdbCrosshair
         internal MainForm(Size available)
         {
             config = ConfigManager.Load();
+            UiText.UseEnglish = config.EnglishUi;
             settings = config.Settings;
             Theme.ApplyAccent(config.Accent);
             Glass.Material = config.Material;
@@ -1922,7 +2008,7 @@ namespace NativeVcrdbCrosshair
             gameProfiles = new GameProfileWatcher(config, ApplyGameProfile);
             InitializeWorkflow();
             overlay.ScreensChanged += delegate { LoadMonitors(); UpdateScreenOffsetLabel(); };
-            overlay.RenderFailed += delegate { SetNotice("Katman çizilemedi. Ekran seçimini veya Windows görüntü ayarlarını kontrol et."); };
+            overlay.RenderFailed += delegate { SetNotice(UiText.Get("Katman çizilemedi. Ekran seçimini veya Windows görüntü ayarlarını kontrol et.")); };
 
 
             BuildTitleBar();
@@ -1963,7 +2049,7 @@ namespace NativeVcrdbCrosshair
         {
             trayIcon.Visible = true;
             hotkeyRegistered = RegisterCurrentHotkey();
-            if (!hotkeyRegistered) ShowHotkeyFailure("Kısayol kaydedilemedi. Ayarlardan başka bir kombinasyon seç.");
+            if (!hotkeyRegistered) ShowHotkeyFailure(UiText.Get("Kısayol kaydedilemedi. Ayarlardan başka bir kombinasyon seç."));
             FadeIn();
             overlay.SetEditorActivity(Visible && WindowState != FormWindowState.Minimized, config.BackgroundPulse);
             if (config.HoldVisibility) SetHoldVisibility(true);
@@ -2067,15 +2153,15 @@ namespace NativeVcrdbCrosshair
             statusPill = new StatusPill();
             statusPill.Location = new Point(LayoutWidth - 235, (TITLE_H - 28) / 2);
             statusPill.Toggled += new EventHandler(OnStatusToggle);
-            statusPill.AccessibleName = "Nişangâhı göster veya gizle";
+            statusPill.AccessibleName = UiText.Get("Nişangâhı göster veya gizle");
             titleBar.Controls.Add(statusPill);
 
-            ModernButton btnClose = MakeWinBtn("✕", "Çıkış", LayoutWidth - 49);
+            ModernButton btnClose = MakeWinBtn("✕", UiText.Get("Çıkış"), LayoutWidth - 49);
             btnClose.Name = "WindowClose";
             btnClose.Click += new EventHandler(OnCloseClick);
             titleBar.Controls.Add(btnClose);
 
-            ModernButton btnMin = MakeWinBtn("—", "Simge durumuna küçült", LayoutWidth - 91);
+            ModernButton btnMin = MakeWinBtn("—", UiText.Get("Simge durumuna küçült"), LayoutWidth - 91);
             btnMin.Name = "WindowMinimize";
             btnMin.Click += new EventHandler(OnMinClick);
             titleBar.Controls.Add(btnMin);
@@ -2122,10 +2208,14 @@ namespace NativeVcrdbCrosshair
 
             sidebar.Controls.Add(slideIndicator);
 
-            AddSidebarHeader(sidebar, "STÜDYO", 26);
+            AddSidebarHeader(sidebar, UiText.Get("STÜDYO"), 26);
 
             navItems = new NavItem[6];
-            string[] names = { "Editör", "Profiller", "Konum", "Ekran", "Ayarlar", "Yardım" };
+            string[] names =
+            {
+                UiText.Get("Editör"), UiText.Get("Profiller"), UiText.Get("Konum"),
+                UiText.Get("Ekran"), UiText.Get("Ayarlar"), UiText.Get("Yardım")
+            };
             string[] glyphs = { "cross", "grid", "move", "monitor", "gear", "help" };
             int[] ys = { 51, 94, 137, 180, 266, 309 };
             for (int i = 0; i < 6; i++)
@@ -2138,14 +2228,14 @@ namespace NativeVcrdbCrosshair
                 navItems[i] = ni;
             }
 
-            AddSidebarHeader(sidebar, "UYGULAMA", 240);
+            AddSidebarHeader(sidebar, UiText.Get("UYGULAMA"), 240);
 
             ModernButton hideBtn = new ModernButton();
-            hideBtn.Text = "Tepsiye Gizle";
+            hideBtn.Text = UiText.Get("Tepsiye Gizle");
             hideBtn.Location = new Point(16, compact ? 420 : BODY_H - 60);
             if (compact)
             {
-                var jump = OptionButton(sidebar, "Vizöre Git", 16, 370, SIDEBAR_W - 32);
+                var jump = OptionButton(sidebar, UiText.Get("Vizöre Git"), 16, 370, SIDEBAR_W - 32);
                 jump.Click += delegate { AutoScrollPosition = new Point(0, FORM_H - 18); };
             }
             hideBtn.Size = new Size(SIDEBAR_W - 32, 44);
@@ -2155,13 +2245,14 @@ namespace NativeVcrdbCrosshair
             sidebar.Controls.Add(hideBtn);
         }
 
-        private void AddSidebarHeader(Panel host, string text, int y)
+        private Label AddSidebarHeader(Panel host, string text, int y)
         {
             Label l = new Label();
             l.Text = text; l.ForeColor = Theme.TextDim;
             l.Font = new Font("Segoe UI Semibold", 7.5F);
             l.AutoSize = true; l.Location = new Point(18, y);
             host.Controls.Add(l);
+            return l;
         }
 
         private void OnNavClick(object sender, EventArgs e)
@@ -2213,10 +2304,10 @@ namespace NativeVcrdbCrosshair
             };
             Controls.Add(pv);
 
-            AddSidebarHeader(pv, "CANLI ÖNİZLEME", 23);
+            AddSidebarHeader(pv, UiText.Get("CANLI ÖNİZLEME"), 23);
             var heading = new Label
             {
-                Text = "Optik vizör", Font = new Font("Bahnschrift", 26f),
+                Text = UiText.Get("Optik vizör"), Font = new Font("Bahnschrift", 26f),
                 AutoSize = true, ForeColor = Theme.Text, Location = new Point(22, 41)
             };
             pv.Controls.Add(heading);
@@ -2230,29 +2321,30 @@ namespace NativeVcrdbCrosshair
             pv.Controls.Add(previewReadout);
             UpdateReadout();
 
-            AddSidebarHeader(pv, "YAKINLAŞTIRMA", 490);
-            var backgroundHeading = MakeSection(pv, "ZEMİN", 22, 558);
+            AddSidebarHeader(pv, UiText.Get("YAKINLAŞTIRMA"), 490);
+            var backgroundHeading = AddSidebarHeader(pv, UiText.Get("ZEMİN"), 558);
             AddPreviewChoices(pv, new[] { "1×", "2×", "3×" }, 513, 1,
                 delegate(int i) { preview.Zoom = i + 1; preview.Invalidate(); });
 
-            var backdropControls = new Panel { Bounds = new Rectangle(0, 581, PREVIEW_W, 36), BackColor = Theme.BgPanel };
+            // Starts right of the 1px edge line painted at x = 0 so the divider stays unbroken.
+            var backdropControls = new Panel { Bounds = new Rectangle(1, 581, PREVIEW_W - 1, 36), BackColor = Theme.BgPanel };
             var testControls = new Panel { Bounds = backdropControls.Bounds, BackColor = Theme.BgPanel, Visible = false };
             pv.Controls.Add(backdropControls);
             pv.Controls.Add(testControls);
             int normalScene = 0, testScene = VisibilityScenes.Sky;
-            AddPreviewChoices(backdropControls, new[] { "Optik", "Dama", "Açık" }, 0, 0,
-                delegate(int i) { normalScene = i; preview.SetBackgroundMode(i); });
-            AddPreviewChoices(testControls, new[] { "Gökyüzü", "Loş", "Hareket" }, 0, 0,
-                delegate(int i) { testScene = VisibilityScenes.Sky + i; preview.SetBackgroundMode(testScene); });
+            AddPreviewChoices(backdropControls, new[] { UiText.Get("Optik"), UiText.Get("Dama"), UiText.Get("Açık") }, 0, 0,
+                delegate(int i) { normalScene = i; preview.SetBackgroundMode(i); }, 23);
+            AddPreviewChoices(testControls, new[] { UiText.Get("Gökyüzü"), UiText.Get("Loş"), UiText.Get("Hareket") }, 0, 0,
+                delegate(int i) { testScene = VisibilityScenes.Sky + i; preview.SetBackgroundMode(testScene); }, 23);
 
-            var visibility = OptionButton(pv, "Görünürlük Testi", PREVIEW_W - 169, 51, 146);
+            var visibility = OptionButton(pv, UiText.Get("Görünürlük Testi"), PREVIEW_W - 169, 51, 146);
             visibility.Name = "VisibilityTest";
             visibility.Click += delegate
             {
                 visibility.Selected = !visibility.Selected;
                 testControls.Visible = visibility.Selected;
                 backdropControls.Visible = !visibility.Selected;
-                backgroundHeading.Text = visibility.Selected ? "SINAMA SAHNESİ" : "ZEMİN";
+                backgroundHeading.Text = visibility.Selected ? UiText.Get("SINAMA SAHNESİ") : UiText.Get("ZEMİN");
                 preview.SetBackgroundMode(visibility.Selected ? testScene : normalScene);
             };
 
@@ -2264,7 +2356,7 @@ namespace NativeVcrdbCrosshair
             pv.Controls.Add(notice);
         }
 
-        private void AddPreviewChoices(Panel host, string[] names, int y, int selected, Action<int> apply)
+        private void AddPreviewChoices(Panel host, string[] names, int y, int selected, Action<int> apply, int left = 24)
         {
             var buttons = new ModernButton[names.Length];
             int width = (PREVIEW_W - 62) / buttons.Length;
@@ -2274,7 +2366,7 @@ namespace NativeVcrdbCrosshair
                 var button = new ModernButton
                 {
                     Text = names[i], Ghost = true, Selected = i == selected, CornerRadius = 10,
-                    Location = new Point(24 + (width + 8) * i, y), Size = new Size(width, 36)
+                    Location = new Point(left + (width + 8) * i, y), Size = new Size(width, 36)
                 };
                 buttons[i] = button;
                 button.Click += delegate
@@ -2379,12 +2471,16 @@ namespace NativeVcrdbCrosshair
         {
             Panel page = NewPage();
             int px = 28;
-            MakeSection(page, "NİŞANGÂH STÜDYOSU", px, 25);
-            Label title = MakeHeader(page, "Tasarım masası", px - 2, 42);
+            MakeSection(page, UiText.Get("NİŞANGÂH STÜDYOSU"), px, 25);
+            Label title = MakeHeader(page, UiText.Get("Tasarım masası"), px - 2, 42);
             title.Font = new Font("Bahnschrift", 26f);
-            MakeRowLabel(page, "Rengi, boyutu ve nişangâhın parçalarını ayarla.", px, 88);
+            MakeRowLabel(page, UiText.Get("Rengi, boyutu ve nişangâhın parçalarını ayarla."), px, 88);
 
-            TabStrip tabs = new TabStrip(new string[] { "Genel", "Merkez", "İç çizgiler", "Dış çizgiler", "Şekil" });
+            TabStrip tabs = new TabStrip(new[]
+            {
+                UiText.Get("Genel"), UiText.Get("Merkez"), UiText.Get("İç çizgiler"),
+                UiText.Get("Dış çizgiler"), UiText.Get("Şekil")
+            });
             tabs.Location = new Point(px, 128);
             tabs.Size = new Size(CONTENT_W - px * 2, 42);
             page.Controls.Add(tabs);
@@ -2416,7 +2512,7 @@ namespace NativeVcrdbCrosshair
                     e.Graphics.DrawLine(divider, 28, 341, CONTENT_W - 28, 341);
                 }
             };
-            MakeRowLabel(g0, "Renk", px, 12);
+            MakeRowLabel(g0, UiText.Get("Renk"), px, 12);
             spectrum = new ColorSpectrumControl();
             spectrum.Location = new Point(px + 132, 10); spectrum.Size = new Size(300, 26);
             spectrum.ColorChanged += new EventHandler(OnSpectrumChanged);
@@ -2438,12 +2534,12 @@ namespace NativeVcrdbCrosshair
                 g0.Controls.Add(s);
             }
 
-            MakeRowLabel(g0, "Renk kodu", px, 92);
+            MakeRowLabel(g0, UiText.Get("Renk kodu"), px, 92);
             hexBox = new TextBox();
             hexBox.Location = new Point(px + 132, 90); hexBox.Width = 100;
             hexBox.BackColor = Theme.BgPanelAlt; hexBox.ForeColor = Theme.Text;
             hexBox.BorderStyle = BorderStyle.FixedSingle; hexBox.Font = uiFont;
-            hexBox.AccessibleName = "Onaltılık renk kodu";
+            hexBox.AccessibleName = UiText.Get("Onaltılık renk kodu");
             hexBox.MaxLength = 7;
             hexBox.KeyDown += new KeyEventHandler(OnHexKey);
             g0.Controls.Add(hexBox);
@@ -2454,24 +2550,24 @@ namespace NativeVcrdbCrosshair
             };
             g0.Controls.Add(colorMessage);
 
-            slOpacity = AddSlider(g0, "Opaklık", px, 130, 0, 255, "");
+            slOpacity = AddSlider(g0, UiText.Get("Opaklık"), px, 130, 0, 255, "");
             slOpacity.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.Opacity = slOpacity.Value; Pushed(); } };
 
-            tgOutline = AddToggle(g0, "Dış Hat", px, 174);
+            tgOutline = AddToggle(g0, UiText.Get("Dış Hat"), px, 174);
             tgOutline.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutlineShow = tgOutline.Checked; Pushed(); } };
 
-            slOutThick = AddSlider(g0, "Hat Kalınlığı", px, 214, 1, 6, "");
+            slOutThick = AddSlider(g0, UiText.Get("Hat Kalınlığı"), px, 214, 1, 6, "");
             slOutThick.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutlineThick = slOutThick.Value; Pushed(); } };
 
-            slScale = AddSlider(g0, "Global Boyut", px, 254, 50, 300, "%");
+            slScale = AddSlider(g0, UiText.Get("Global Boyut"), px, 254, 50, 300, "%");
             slScale.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.Scale = slScale.Value; if (positionScaleSlider != null) positionScaleSlider.SetValueSilent(slScale.Value); Pushed(); } };
 
-            tgTShape = AddToggle(g0, "T-Şekli", px, 296);
+            tgTShape = AddToggle(g0, UiText.Get("T-Şekli"), px, 296);
             tgTShape.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.TShape = tgTShape.Checked; Pushed(); } };
 
-            tgPulse = AddToggle(g0, "Nabız efekti", px + 230, 296);
+            tgPulse = AddToggle(g0, UiText.Get("Nabız efekti"), px + 230, 296);
             tgPulse.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.Pulse = tgPulse.Checked; Pushed(); } };
-            var quickSave = OptionButton(page, "＋  Profil Olarak Kaydet", px, 581, 192);
+            var quickSave = OptionButton(page, UiText.Get("＋  Profil Olarak Kaydet"), px, 581, 192);
             quickSave.Ghost = false;
             quickSave.Click += OnSaveProfile;
             quickSave.BringToFront();
@@ -2479,34 +2575,34 @@ namespace NativeVcrdbCrosshair
 
             // --- MERKEZ ---
             Panel g1 = sub[1];
-            MakeSection(g1, "MERKEZ NOKTA", px, 10);
-            tgDot = AddToggle(g1, "Göster", px, 40);
+            MakeSection(g1, UiText.Get("MERKEZ NOKTA"), px, 10);
+            tgDot = AddToggle(g1, UiText.Get("Göster"), px, 40);
             tgDot.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.DotShow = tgDot.Checked; Pushed(); } };
-            slDotThick = AddSlider(g1, "Boyut", px, 84, 1, 24, "px");
+            slDotThick = AddSlider(g1, UiText.Get("Boyut"), px, 84, 1, 24, "px");
             slDotThick.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.DotThick = slDotThick.Value; Pushed(); } };
 
             // --- İÇ ---
             Panel g2 = sub[2];
-            MakeSection(g2, "İÇ ÇİZGİLER", px, 10);
-            tgIn = AddToggle(g2, "Göster", px, 40);
+            MakeSection(g2, UiText.Get("İÇ ÇİZGİLER"), px, 10);
+            tgIn = AddToggle(g2, UiText.Get("Göster"), px, 40);
             tgIn.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.InShow = tgIn.Checked; Pushed(); } };
-            slInLen = AddSlider(g2, "Uzunluk", px, 84, 0, 30, "");
+            slInLen = AddSlider(g2, UiText.Get("Uzunluk"), px, 84, 0, 30, "");
             slInLen.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.InLen = slInLen.Value; Pushed(); } };
-            slInThick = AddSlider(g2, "Kalınlık", px, 124, 1, 12, "");
+            slInThick = AddSlider(g2, UiText.Get("Kalınlık"), px, 124, 1, 12, "");
             slInThick.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.InThick = slInThick.Value; Pushed(); } };
-            slInOff = AddSlider(g2, "Boşluk", px, 164, 0, 30, "");
+            slInOff = AddSlider(g2, UiText.Get("Boşluk"), px, 164, 0, 30, "");
             slInOff.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.InOff = slInOff.Value; Pushed(); } };
 
             // --- DIŞ ---
             Panel g3 = sub[3];
-            MakeSection(g3, "DIŞ ÇİZGİLER", px, 10);
-            tgOut = AddToggle(g3, "Göster", px, 40);
+            MakeSection(g3, UiText.Get("DIŞ ÇİZGİLER"), px, 10);
+            tgOut = AddToggle(g3, UiText.Get("Göster"), px, 40);
             tgOut.CheckedChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutShow = tgOut.Checked; Pushed(); } };
-            slOutLen = AddSlider(g3, "Uzunluk", px, 84, 0, 30, "");
+            slOutLen = AddSlider(g3, UiText.Get("Uzunluk"), px, 84, 0, 30, "");
             slOutLen.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutLen = slOutLen.Value; Pushed(); } };
-            slOutThick2 = AddSlider(g3, "Kalınlık", px, 124, 1, 12, "");
+            slOutThick2 = AddSlider(g3, UiText.Get("Kalınlık"), px, 124, 1, 12, "");
             slOutThick2.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutThick = slOutThick2.Value; Pushed(); } };
-            slOutOff = AddSlider(g3, "Boşluk", px, 164, 0, 60, "");
+            slOutOff = AddSlider(g3, UiText.Get("Boşluk"), px, 164, 0, 60, "");
             slOutOff.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OutOff = slOutOff.Value; Pushed(); } };
 
             BuildShapeEditor(sub[4], px);
@@ -2515,8 +2611,8 @@ namespace NativeVcrdbCrosshair
 
         private void BuildShapeEditor(Panel host, int x)
         {
-            MakeSection(host, "MERKEZ İŞARETİ", x, 11);
-            string[] names = { "Kare", "Halka", "Elmas" };
+            MakeSection(host, UiText.Get("MERKEZ İŞARETİ"), x, 11);
+            string[] names = { UiText.Get("Kare"), UiText.Get("Halka"), UiText.Get("Elmas") };
             markerButtons = new ModernButton[names.Length];
             for (int i = 0; i < names.Length; i++)
             {
@@ -2534,16 +2630,16 @@ namespace NativeVcrdbCrosshair
                 };
             }
 
-            roundedArms = AddToggle(host, "Yuvarlak uçlar", x + 268, 41);
+            roundedArms = AddToggle(host, UiText.Get("Yuvarlak uçlar"), x + 268, 41);
             roundedArms.CheckedChanged += delegate { settings.RoundedArms = roundedArms.Checked; Pushed(); };
 
-            MakeSection(host, "DÖRT KOLUN UZUNLUĞU", x, 98);
-            MakeRowLabel(host, "İç ve dış çizgilere uygulanır. %0 ilgili kolu gizler.", x, 121);
-            topLength = AddArmSlider(host, "Üst", x, 164, value => settings.TopLength = value);
-            rightLength = AddArmSlider(host, "Sağ", x, 203, value => settings.RightLength = value);
-            bottomLength = AddArmSlider(host, "Alt", x, 242, value => settings.BottomLength = value);
-            leftLength = AddArmSlider(host, "Sol", x, 281, value => settings.LeftLength = value);
-            doubleOutline = AddToggle(host, "Çift renk dış hat", x + 166, 329);
+            MakeSection(host, UiText.Get("DÖRT KOLUN UZUNLUĞU"), x, 98);
+            MakeRowLabel(host, UiText.Get("İç ve dış çizgilere uygulanır. %0 ilgili kolu gizler."), x, 121);
+            topLength = AddArmSlider(host, UiText.Get("Üst"), x, 164, value => settings.TopLength = value);
+            rightLength = AddArmSlider(host, UiText.Get("Sağ"), x, 203, value => settings.RightLength = value);
+            bottomLength = AddArmSlider(host, UiText.Get("Alt"), x, 242, value => settings.BottomLength = value);
+            leftLength = AddArmSlider(host, UiText.Get("Sol"), x, 281, value => settings.LeftLength = value);
+            doubleOutline = AddToggle(host, UiText.Get("Çift renk dış hat"), x + 166, 329);
             doubleOutline.CheckedChanged += delegate
             {
                 settings.DoubleOutline = doubleOutline.Checked;
@@ -2554,7 +2650,7 @@ namespace NativeVcrdbCrosshair
                 }
                 Pushed();
             };
-            var reset = OptionButton(host, "Kolları Eşitle", x, 325, 141);
+            var reset = OptionButton(host, UiText.Get("Kolları Eşitle"), x, 325, 141);
             reset.Click += delegate
             {
                 settings.TopLength = settings.RightLength = settings.BottomLength = settings.LeftLength = 100;
@@ -2601,7 +2697,7 @@ namespace NativeVcrdbCrosshair
                 SetColor(Color.FromArgb(unchecked((int)0xFF000000) | rgb));
                 return;
             }
-            colorMessage.Text = "Örnek: #FFE5DC";
+            colorMessage.Text = UiText.Get("Örnek: #FFE5DC");
             hexBox.SelectAll();
         }
 
@@ -2621,23 +2717,24 @@ namespace NativeVcrdbCrosshair
         private Panel BuildPresetsPage()
         {
             Panel page = NewPage();
-            MakeHeader(page, "Profil galerisi", 28, 16);
-            OptionButton(page, "＋  Profili Kaydet", CONTENT_W - 171, 17, 146).Click += OnSaveProfile;
+            MakeHeader(page, UiText.Get("Profil galerisi"), 28, 16);
+            OptionButton(page, UiText.Get("＋  Profili Kaydet"), CONTENT_W - 171, 17, 146).Click += OnSaveProfile;
             Label sub = new Label();
-            sub.Text = "Tıklayarak uygula, sağ tıklayarak profil işlemlerini aç.";
+            sub.Text = UiText.Get("Tıklayarak uygula, sağ tıklayarak profil işlemlerini aç.");
             sub.ForeColor = Theme.TextDim; sub.Font = uiFont; sub.AutoSize = true; sub.Location = new Point(28, 59);
             page.Controls.Add(sub);
 
             galleryPanel = new Panel();
-            OptionButton(page, "Oyuna Özel", 28, 89, 142).Click += EditGameRules;
-            OptionButton(page, "Paket İçe Aktar", 178, 89, 140).Click += ImportProfilePack;
-            OptionButton(page, "Paketi Dışa Aktar", 326, 89, 163).Click += ExportProfilePack;
+            OptionButton(page, UiText.Get("Oyuna Özel"), 28, 89, 142).Click += EditGameRules;
+            OptionButton(page, UiText.Get("Paket İçe Aktar"), 178, 89, 140).Click += ImportProfilePack;
+            OptionButton(page, UiText.Get("Paketi Dışa Aktar"), 326, 89, 163).Click += ExportProfilePack;
 
             AddLibraryTools(page);
             galleryPanel.Location = new Point(28, 223);
             galleryPanel.Size = new Size(CONTENT_W - 45, BODY_H - 232);
             galleryPanel.BackColor = Theme.Bg;
             galleryPanel.AutoScroll = true;
+            Theme.DarkScrollbars(galleryPanel);
             page.Controls.Add(galleryPanel);
             return page;
         }
@@ -2681,7 +2778,7 @@ namespace NativeVcrdbCrosshair
                 foreach (var profile in SavedDesigns())
                 {
                     if (!config.Library.Matches(profile.Key, query, favoritesOnly)) continue;
-                    if (!personal) { startGroup(favoritesOnly ? "FAVORİLERİM" : "PROFİLLERİM"); personal = true; }
+                    if (!personal) { startGroup(favoritesOnly ? UiText.Get("FAVORİLERİM") : UiText.Get("PROFİLLERİM")); personal = true; }
                     string label = (config.Library.Favorites.Contains(profile.Key) ? "★ " : "") + profile.Key;
                     add(label, profile.Value, profile.Key);
                 }
@@ -2693,32 +2790,32 @@ namespace NativeVcrdbCrosshair
                     {
                         string name = PresetNames[i];
                         if (name.IndexOf(query.Trim(), StringComparison.CurrentCultureIgnoreCase) < 0) continue;
-                        if (!builtIn) { startGroup("YERLEŞİK TASARIMLAR"); builtIn = true; }
+                        if (!builtIn) { startGroup(UiText.Get("YERLEŞİK TASARIMLAR")); builtIn = true; }
                         add(name, BuildPreset(i), null);
                     }
                 }
 
                 if (shown == 0)
-                    MakeRowLabel(galleryPanel, favoritesOnly ? "Eşleşen favori profil yok." : "Eşleşen profil bulunamadı.", 2, 4);
+                    MakeRowLabel(galleryPanel, favoritesOnly ? UiText.Get("Eşleşen favori profil yok.") : UiText.Get("Eşleşen profil bulunamadı."), 2, 4);
             }
             finally { galleryPanel.ResumeLayout(true); }
         }
 
         private void OnSaveProfile(object s, EventArgs e)
         {
-            string name = PromptForm.ShowDialog(this, "Profil adı:", "Yeni Profil");
+            string name = PromptForm.ShowDialog(this, UiText.Get("Profil adı:"), UiText.Get("Yeni Profil"));
             if (name == null || name.Trim().Length == 0) return;
             name = name.Trim();
             if (!ConfigManager.IsValidProfileName(name))
             {
-                ShowProfileError("1–40 karakterli geçerli bir dosya adı kullan.");
+                ShowProfileError(UiText.Get("1–40 karakterli geçerli bir dosya adı kullan."));
                 return;
             }
-            if (ConfigManager.ProfileExists(name) && MessageBox.Show(this, "'" + name + "' güncellensin mi?",
-                "Profili güncelle", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            if (ConfigManager.ProfileExists(name) && MessageBox.Show(this, string.Format(UiText.Get("'{0}' güncellensin mi?"), name),
+                UiText.Get("Profili güncelle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             try { ConfigManager.SaveProfile(name, settings); }
-            catch (IOException) { ShowProfileError("Profil kaydedilemedi."); return; }
-            catch (UnauthorizedAccessException) { ShowProfileError("Profili kaydetme izni yok."); return; }
+            catch (IOException) { ShowProfileError(UiText.Get("Profil kaydedilemedi.")); return; }
+            catch (UnauthorizedAccessException) { ShowProfileError(UiText.Get("Profili kaydetme izni yok.")); return; }
             ProfilesChanged();
         }
 
@@ -2746,7 +2843,7 @@ namespace NativeVcrdbCrosshair
 
         private void RefreshGameRules()
         {
-            if (!gameProfiles.RefreshRules()) SetNotice("Windows, oyun profili algılamasını başlatamadı.");
+            if (!gameProfiles.RefreshRules()) SetNotice(UiText.Get("Windows, oyun profili algılamasını başlatamadı."));
         }
 
         private void ApplyGameProfile(VcrdbSettings selected, string name)
@@ -2757,7 +2854,7 @@ namespace NativeVcrdbCrosshair
             if (activeGameMenu != null)
             {
                 activeGameMenu.Visible = name != null;
-                activeGameMenu.Text = name == null ? "" : "Oyun profili: " + name;
+                activeGameMenu.Text = name == null ? "" : UiText.Get("Oyun profili: ") + name;
             }
         }
 
@@ -2765,7 +2862,7 @@ namespace NativeVcrdbCrosshair
 
         private void ImportProfilePack(object sender, EventArgs e)
         {
-            using (var dialog = new OpenFileDialog { Filter = ProfilePackFilter, CheckFileExists = true })
+            using (var dialog = new OpenFileDialog { Filter = UiText.Get(ProfilePackFilter), CheckFileExists = true })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
@@ -2778,35 +2875,39 @@ namespace NativeVcrdbCrosshair
                         result = pack.Import(previewPack.Selected);
                     }
                     if (result.Imported > 0) ProfilesChanged();
-                    MessageBox.Show(this, String.Format("{0} eklendi · {1} aynı ad korundu · {2} yazılamadı",
-                        result.Imported, result.Skipped, result.Failed), "Profil paketi",
+                    MessageBox.Show(this, String.Format(UiText.Get("{0} eklendi · {1} aynı ad korundu · {2} yazılamadı"),
+                        result.Imported, result.Skipped, result.Failed), UiText.Get("Profil paketi"),
                         MessageBoxButtons.OK, result.Failed == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
                 }
-                catch (FormatException) { ShowProfileError("Paket biçimi geçersiz veya dosya sınırları aşıldı."); }
-                catch (DecoderFallbackException) { ShowProfileError("Paket metni okunamadı."); }
-                catch (IOException) { ShowProfileError("Profil paketi okunamadı."); }
-                catch (UnauthorizedAccessException) { ShowProfileError("Profil paketini okumak için izin yok."); }
+                catch (FormatException) { ShowProfileError(UiText.Get("Paket biçimi geçersiz veya dosya sınırları aşıldı.")); }
+                catch (DecoderFallbackException) { ShowProfileError(UiText.Get("Paket metni okunamadı.")); }
+                catch (IOException) { ShowProfileError(UiText.Get("Profil paketi okunamadı.")); }
+                catch (UnauthorizedAccessException) { ShowProfileError(UiText.Get("Profil paketini okumak için izin yok.")); }
             }
         }
 
         private void ExportProfilePack(object sender, EventArgs e)
         {
-            using (var dialog = new SaveFileDialog { Filter = ProfilePackFilter, DefaultExt = "vcpak", FileName = "Crosshair-profilleri" })
+            using (var dialog = new SaveFileDialog
+            {
+                Filter = UiText.Get(ProfilePackFilter), DefaultExt = "vcpak", FileName = UiText.Get("Crosshair-profilleri")
+            })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
                     int count = ProfilePack.Export(dialog.FileName);
-                    SetNotice(count == 0 ? "Paket için önce bir profil kaydet." : count + " profil pakete kaydedildi.");
+                    SetNotice(count == 0 ? UiText.Get("Paket için önce bir profil kaydet.")
+                        : string.Format(UiText.Get("{0} profil pakete kaydedildi."), count));
                 }
-                catch (IOException) { ShowProfileError("Paket kaydedilemedi. Dosya yolunu ve profil sayısını kontrol et."); }
-                catch (UnauthorizedAccessException) { ShowProfileError("Bu dosyaya yazmak için izin yok."); }
+                catch (IOException) { ShowProfileError(UiText.Get("Paket kaydedilemedi. Dosya yolunu ve profil sayısını kontrol et.")); }
+                catch (UnauthorizedAccessException) { ShowProfileError(UiText.Get("Bu dosyaya yazmak için izin yok.")); }
             }
         }
 
         private void ShowProfileError(string message)
         {
-            MessageBox.Show(this, message, "Profil", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, message, UiText.Get("Profil"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private VcrdbSettings BuildPreset(int index)
@@ -2830,24 +2931,24 @@ namespace NativeVcrdbCrosshair
         {
             Panel page = NewPage();
             int px = 28;
-            MakeHeader(page, "Pozisyon ve Boyut", px, 16);
-            MakeSection(page, "MERKEZDEN KAYDIRMA", px, 70);
+            MakeHeader(page, UiText.Get("Pozisyon ve Boyut"), px, 16);
+            MakeSection(page, UiText.Get("MERKEZDEN KAYDIRMA"), px, 70);
 
-            slOffX = AddSlider(page, "Yatay (X)", px, 101, -300, 300, "px");
+            slOffX = AddSlider(page, UiText.Get("Yatay (X)"), px, 101, -300, 300, "px");
             slOffX.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OffsetX = slOffX.Value; Pushed(); } };
-            slOffY = AddSlider(page, "Dikey (Y)", px, 143, -300, 300, "px");
+            slOffY = AddSlider(page, UiText.Get("Dikey (Y)"), px, 143, -300, 300, "px");
             slOffY.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.OffsetY = slOffY.Value; Pushed(); } };
 
-            MakeSection(page, "BOYUT", px, 174);
-            ModernSlider scale2 = AddSlider(page, "Global Boyut", px, 202, 50, 300, "%");
+            MakeSection(page, UiText.Get("BOYUT"), px, 194);
+            ModernSlider scale2 = AddSlider(page, UiText.Get("Global Boyut"), px, 222, 50, 300, "%");
             scale2.ValueChanged += delegate (object s, EventArgs e) { if (!isUpdatingUI) { settings.Scale = scale2.Value; if (slScale != null) slScale.SetValueSilent(scale2.Value); Pushed(); } };
             // slScale değişince bu da güncellensin
             this.positionScaleSlider = scale2;
 
             ModernButton reset = new ModernButton();
-            reset.Text = "Ortala / Sıfırla";
+            reset.Text = UiText.Get("Ortala / Sıfırla");
             reset.Ghost = true;
-            reset.Location = new Point(px, 256);
+            reset.Location = new Point(px, 276);
             reset.Size = new Size(180, 38);
             reset.Click += delegate (object s, EventArgs e)
             {
@@ -2857,16 +2958,16 @@ namespace NativeVcrdbCrosshair
             page.Controls.Add(reset);
 
             Label note = new Label();
-            note.Text = "Çoğu oyunda nişan noktası ekranın tam merkezindedir. Eğer crosshair\nbiraz kayık duruyorsa buradan ince ayar yapabilirsin.";
+            note.Text = UiText.Get("Çoğu oyunda nişan noktası ekranın tam merkezindedir. Eğer crosshair\nbiraz kayık duruyorsa buradan ince ayar yapabilirsin.");
             note.ForeColor = Theme.TextDim; note.Font = uiFont; note.AutoSize = false;
-            note.Size = new Size(CONTENT_W - px - 20, 50); note.Location = new Point(px, 310);
+            note.Size = new Size(CONTENT_W - px - 20, 50); note.Location = new Point(px, 330);
             page.Controls.Add(note);
 
-            MakeSection(page, "EKRANA ÖZEL DÜZELTME", px, 390);
+            MakeSection(page, UiText.Get("EKRANA ÖZEL DÜZELTME"), px, 390);
             screenOffsetLabel = MakeRowLabel(page, "", px, 424);
             UpdateScreenOffsetLabel();
-            OptionButton(page, "Piksel Kalibrasyonu", px, 460, 176).Click += OpenCalibration;
-            MakeRowLabel(page, "Hedef ekranı Ekran sayfasından değiştir.", px, 507);
+            OptionButton(page, UiText.Get("Piksel Kalibrasyonu"), px, 460, 176).Click += OpenCalibration;
+            MakeRowLabel(page, UiText.Get("Hedef ekranı Ekran sayfasından değiştir."), px, 507);
             return page;
         }
         private ModernSlider positionScaleSlider;
@@ -2876,15 +2977,16 @@ namespace NativeVcrdbCrosshair
         {
             Panel page = NewPage();
             int px = 28;
-            MakeHeader(page, "Ekran ve katman", px, 16);
-            MakeSection(page, "HEDEF EKRAN", px, 76);
+            MakeHeader(page, UiText.Get("Ekran ve katman"), px, 16);
+            MakeSection(page, UiText.Get("HEDEF EKRAN"), px, 76);
 
             monitorSelect = new ComboBox
             {
                 Location = new Point(px, 103), Size = new Size(320, 30),
                 DropDownStyle = ComboBoxStyle.DropDownList, Font = uiFont,
-                BackColor = Theme.BgPanelAlt, ForeColor = Theme.Text, AccessibleName = "Hedef ekran"
+                BackColor = Theme.BgPanelAlt, ForeColor = Theme.Text, AccessibleName = UiText.Get("Hedef ekran")
             };
+            Theme.DarkPicker(monitorSelect);
             monitorSelect.SelectionChangeCommitted += delegate
             {
                 MonitorChoice selected = monitorSelect.SelectedItem as MonitorChoice;
@@ -2897,10 +2999,12 @@ namespace NativeVcrdbCrosshair
             page.Controls.Add(monitorSelect);
             LoadMonitors();
 
-            MakeSection(page, "OYUN PENCERESİ", px, 182);
+            MakeSection(page, UiText.Get("OYUN PENCERESİ"), px, 182);
             Label info = new Label
             {
-                Text = "Kenarlıksız veya pencereli oyun modunu kullan.\n\nÖzel tam ekran modunda nişangâh görünmeyebilir.\n\nSeçili monitör ayrılırsa katman birincil ekrana geçer.",
+                Text = UiText.Get("Kenarlıksız veya pencereli oyun modunu kullan.\n\n"
+                    + "Özel tam ekran modunda nişangâh görünmeyebilir.\n\n"
+                    + "Seçili monitör ayrılırsa katman birincil ekrana geçer."),
                 ForeColor = Theme.TextDim, Font = uiFont, Location = new Point(px, 211),
                 Size = new Size(CONTENT_W - 55, 185)
             };
@@ -2922,19 +3026,19 @@ namespace NativeVcrdbCrosshair
             try
             {
                 monitorSelect.Items.Clear();
-                monitorSelect.Items.Add(new MonitorChoice("", "Otomatik · Birincil ekran"));
+                monitorSelect.Items.Add(new MonitorChoice("", UiText.Get("Otomatik · Birincil ekran")));
                 int selected = 0;
                 foreach (Screen screen in Screen.AllScreens)
                 {
                     string name = screen.DeviceName.Substring(screen.DeviceName.LastIndexOf('\\') + 1);
                     monitorSelect.Items.Add(new MonitorChoice(screen.DeviceName, name + " · " +
-                        screen.Bounds.Width + " × " + screen.Bounds.Height + (screen.Primary ? " · Birincil" : "")));
+                        screen.Bounds.Width + " × " + screen.Bounds.Height + (screen.Primary ? UiText.Get(" · Birincil") : "")));
                     if (!String.IsNullOrEmpty(config.MonitorDevice) && screen.DeviceName == config.MonitorDevice)
                         selected = monitorSelect.Items.Count - 1;
                 }
                 if (selected == 0 && !String.IsNullOrEmpty(config.MonitorDevice))
                 {
-                    monitorSelect.Items.Add(new MonitorChoice(config.MonitorDevice, "Bağlantı yok · Birincil ekran kullanılıyor"));
+                    monitorSelect.Items.Add(new MonitorChoice(config.MonitorDevice, UiText.Get("Bağlantı yok · Birincil ekran kullanılıyor")));
                     selected = monitorSelect.Items.Count - 1;
                 }
                 monitorSelect.SelectedIndex = selected;
@@ -2947,11 +3051,12 @@ namespace NativeVcrdbCrosshair
         {
             Panel page = NewPage();
             int px = 28;
-            MakeHeader(page, "Ayarlar", px, 16);
+            MakeHeader(page, UiText.Get("Ayarlar"), px, 16);
+            AddLanguageChoice(page, px);
 
-            MakeSection(page, "CAM MALZEMESİ", px, 69);
+            MakeSection(page, UiText.Get("CAM MALZEMESİ"), px, 69);
             var materials = new[] { GlassMaterial.Gloss, GlassMaterial.Quiet, GlassMaterial.Technical };
-            var materialNames = new[] { "Parlak Cam", "Sade Lüks", "Teknik Lüks" };
+            var materialNames = new[] { UiText.Get("Parlak Cam"), UiText.Get("Sade Lüks"), UiText.Get("Teknik Lüks") };
             materialButtons = new ModernButton[materials.Length];
             for (int i = 0; i < materials.Length; i++)
             {
@@ -2968,9 +3073,9 @@ namespace NativeVcrdbCrosshair
                 };
             }
 
-            MakeSection(page, "VURGU RENGİ", px, 144);
+            MakeSection(page, UiText.Get("VURGU RENGİ"), px, 144);
             var accents = new[] { AccentTheme.Burgundy, AccentTheme.Orange, AccentTheme.Purple, AccentTheme.Cyan };
-            var accentNames = new[] { "Bordo", "Turuncu", "Mor", "Turkuaz" };
+            var accentNames = new[] { UiText.Get("Bordo"), UiText.Get("Turuncu"), UiText.Get("Mor"), UiText.Get("Turkuaz") };
             accentButtons = new ModernButton[accents.Length];
             for (int i = 0; i < accents.Length; i++)
             {
@@ -2989,18 +3094,18 @@ namespace NativeVcrdbCrosshair
                 };
             }
 
-            MakeSection(page, "GÖSTER / GİZLE KISAYOLU", px, 224);
+            MakeSection(page, UiText.Get("GÖSTER / GİZLE KISAYOLU"), px, 224);
             hotkeyBox = new HotkeyBox
             {
                 Ctrl = config.HkCtrl, Alt = config.HkAlt, Shift = config.HkShift, KeyValue = config.HkKey,
-                Location = new Point(px, 250), AccessibleName = "Göster veya gizle kısayolu"
+                Location = new Point(px, 250), AccessibleName = UiText.Get("Göster veya gizle kısayolu")
             };
             hotkeyBox.HotkeyChanged += OnHotkeyChanged;
             page.Controls.Add(hotkeyBox);
-            MakeRowLabel(page, "Windows ile başlat", px + 218, 252);
+            MakeRowLabel(page, UiText.Get("Windows ile başlat"), px + 218, 252);
             var startup = new ToggleSwitch
             {
-                Location = new Point(px + 370, 256), AccessibleName = "Windows ile başlat"
+                Location = new Point(px + 370, 256), AccessibleName = UiText.Get("Windows ile başlat")
             };
             startup.SetCheckedSilent(ReadStartup());
             startup.CheckedChanged += OnStartupToggle;
@@ -3009,32 +3114,32 @@ namespace NativeVcrdbCrosshair
             hotkeyMessage = new Label
             {
                 Font = sliderFont, ForeColor = Theme.TextDim,
-                Text = "Ctrl, Alt veya Shift ile bir tuş; ya da tek başına bir F tuşu.",
+                Text = UiText.Get("Ctrl, Alt veya Shift ile bir tuş; ya da tek başına bir F tuşu."),
                 Location = new Point(px, 294), Size = new Size(CONTENT_W - px * 2, 31)
             };
             page.Controls.Add(hotkeyMessage);
 
-            MakeSection(page, "PAYLAŞIM KODU", px, 345);
-            shareOutBox = MakeTextBox(page, "Mevcut paylaşım kodu", px, 373, 303);
+            MakeSection(page, UiText.Get("PAYLAŞIM KODU"), px, 345);
+            shareOutBox = MakeTextBox(page, UiText.Get("Mevcut paylaşım kodu"), px, 373, 303);
             shareOutBox.ReadOnly = true;
-            var copy = OptionButton(page, "Kopyala", px + 316, 369, 107);
+            var copy = OptionButton(page, UiText.Get("Kopyala"), px + 316, 369, 107);
             copy.Click += delegate
             {
                 try
                 {
                     Clipboard.SetText(settings.ToShareCode());
-                    shareMessage.Text = "Kod panoya kopyalandı.";
+                    shareMessage.Text = UiText.Get("Kod panoya kopyalandı.");
                     shareMessage.ForeColor = Glass.Success;
                 }
                 catch (ExternalException)
                 {
-                    shareMessage.Text = "Pano kullanılıyor. Biraz sonra yeniden dene.";
+                    shareMessage.Text = UiText.Get("Pano kullanılıyor. Biraz sonra yeniden dene.");
                     shareMessage.ForeColor = Glass.Warning;
                 }
             };
-            shareInBox = MakeTextBox(page, "İçe aktarılacak paylaşım kodu", px, 418, 303);
+            shareInBox = MakeTextBox(page, UiText.Get("İçe aktarılacak paylaşım kodu"), px, 418, 303);
             shareInBox.MaxLength = 2049;
-            var import = OptionButton(page, "İçe Aktar", px + 316, 414, 107);
+            var import = OptionButton(page, UiText.Get("İçe Aktar"), px + 316, 414, 107);
             import.Ghost = false;
             import.Click += OnImportCode;
             shareInBox.KeyDown += delegate(object sender, KeyEventArgs e)
@@ -3050,17 +3155,17 @@ namespace NativeVcrdbCrosshair
                 Size = new Size(CONTENT_W - px * 2, 30)
             };
             page.Controls.Add(shareMessage);
-            var reset = OptionButton(page, "Nişangâhı Sıfırla", px, 493, 164);
+            var reset = OptionButton(page, UiText.Get("Nişangâhı Sıfırla"), px, 493, 164);
             reset.Click += delegate
             {
-                if (MessageBox.Show(this, "Nişangâh varsayılan tasarıma dönsün mü?", "Sıfırla",
+                if (MessageBox.Show(this, UiText.Get("Nişangâh varsayılan tasarıma dönsün mü?"), UiText.Get("Sıfırla"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                     ApplySettingsObject(new VcrdbSettings());
             };
-            MakeSection(page, "ARKA PLAN", px, 550);
-            var backgroundPulse = AddToggle(page, "Nabzı sürdür", px, 575);
+            MakeSection(page, UiText.Get("ARKA PLAN"), px, 550);
+            var backgroundPulse = AddToggle(page, UiText.Get("Nabzı sürdür"), px, 575);
             backgroundPulse.Name = "BackgroundPulseToggle";
-            backgroundPulse.AccessibleName = "Nabız efektini arka planda sürdür";
+            backgroundPulse.AccessibleName = UiText.Get("Nabız efektini arka planda sürdür");
             backgroundPulse.SetCheckedSilent(config.BackgroundPulse);
             backgroundPulse.CheckedChanged += delegate
             {
@@ -3068,19 +3173,52 @@ namespace NativeVcrdbCrosshair
                 OnEditorActivityChanged(this, EventArgs.Empty);
                 ScheduleSave();
             };
-            MakeRowLabel(page, "Yalnızca nabız efekti açıkken geçerli.", px, 609);
+            MakeRowLabel(page, UiText.Get("Yalnızca nabız efekti açıkken geçerli."), px, 609);
 
-            MakeRowLabel(page, "Basılı tutarak göster", px + 225, 545);
+            MakeRowLabel(page, UiText.Get("Basılı tutarak göster"), px + 225, 545);
             var holdToggle = new ToggleSwitch
             {
                 Name = "HoldVisibilityToggle", Location = new Point(px + 390, 545),
-                AccessibleName = "Gösterme kısayoluna basılı tutarak göster"
+                AccessibleName = UiText.Get("Gösterme kısayoluna basılı tutarak göster")
             };
             holdToggle.SetCheckedSilent(config.HoldVisibility);
             holdToggle.CheckedChanged += delegate { SetHoldVisibility(holdToggle.Checked); ScheduleSave(); };
             page.Controls.Add(holdToggle);
-            MakeRowLabel(page, "Gösterme kısayolunu kullanır.", px + 225, 575);
+            MakeRowLabel(page, UiText.Get("Gösterme kısayolunu kullanır."), px + 225, 575);
             return page;
+        }
+
+        private void AddLanguageChoice(Panel page, int inset)
+        {
+            string caption = UiText.Get("Dil / Language");
+            int x = CONTENT_W - inset - 116;
+            MakeRowLabel(page, caption, x - 103, 25);
+            var language = new ComboBox
+            {
+                Location = new Point(x, 22), Size = new Size(116, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = uiFont,
+                BackColor = Theme.BgPanelAlt, ForeColor = Theme.Text,
+                AccessibleName = caption
+            };
+            Theme.DarkPicker(language);
+            language.Items.AddRange(new object[] { "Türkçe", "English" });
+            language.SelectedIndex = config.EnglishUi ? 1 : 0;
+            language.SelectionChangeCommitted += delegate
+            {
+                bool english = language.SelectedIndex == 1;
+                if (english == config.EnglishUi) return;
+                config.EnglishUi = english;
+                if (!ConfigManager.Save(config))
+                {
+                    config.EnglishUi = !english;
+                    language.SelectedIndex = config.EnglishUi ? 1 : 0;
+                    MessageBox.Show(this, UiText.Get("Dil tercihi kaydedilemedi."), caption,
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                MessageBox.Show(this, UiText.Get("Dil bir sonraki açılışta değişecek."), caption);
+            };
+            page.Controls.Add(language);
         }
 
         private TextBox MakeTextBox(Panel page, string name, int x, int y, int width)
@@ -3134,7 +3272,7 @@ namespace NativeVcrdbCrosshair
             hotkeyRegistered = RegisterCurrentHotkey();
             if (hotkeyRegistered)
             {
-                hotkeyMessage.Text = "Kısayol etkin.";
+                hotkeyMessage.Text = UiText.Get("Kısayol etkin.");
                 hotkeyMessage.ForeColor = Glass.Success;
                 SetNotice("");
                 ScheduleSave();
@@ -3146,7 +3284,9 @@ namespace NativeVcrdbCrosshair
             hotkeyBox.Shift = config.HkShift = previousShift;
             hotkeyBox.Invalidate();
             hotkeyRegistered = previouslyRegistered && RegisterCurrentHotkey();
-            ShowHotkeyFailure(hotkeyRegistered ? "Kısayol kullanılamıyor. Önceki kısayol korundu." : "Kısayol kullanılamıyor. Başka bir kombinasyon dene.");
+            ShowHotkeyFailure(UiText.Get(hotkeyRegistered
+                ? "Kısayol kullanılamıyor. Önceki kısayol korundu."
+                : "Kısayol kullanılamıyor. Başka bir kombinasyon dene."));
         }
 
         private const string StartupRegistryPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
@@ -3181,7 +3321,7 @@ namespace NativeVcrdbCrosshair
             catch (System.Security.SecurityException) { }
             catch (IOException) { }
             toggle.SetCheckedSilent(ReadStartup());
-            SetNotice("Windows başlangıç ayarı değiştirilemedi.");
+            SetNotice(UiText.Get("Windows başlangıç ayarı değiştirilemedi."));
         }
 
         private void OnImportCode(object s, EventArgs e)
@@ -3189,7 +3329,7 @@ namespace NativeVcrdbCrosshair
             VcrdbSettings imported;
             if (!VcrdbSettings.TryFromShareCode(shareInBox.Text, out imported))
             {
-                shareMessage.Text = "Kod geçersiz veya eksik. Paylaşım kodunun tamamını yapıştır.";
+                shareMessage.Text = UiText.Get("Kod geçersiz veya eksik. Paylaşım kodunun tamamını yapıştır.");
                 shareMessage.ForeColor = Glass.Warning;
                 shareInBox.Focus();
                 shareInBox.SelectAll();
@@ -3197,7 +3337,7 @@ namespace NativeVcrdbCrosshair
             }
             ApplySettingsObject(imported);
             shareInBox.Clear();
-            shareMessage.Text = "Paylaşım kodu uygulandı.";
+            shareMessage.Text = UiText.Get("Paylaşım kodu uygulandı.");
             shareMessage.ForeColor = Glass.Success;
         }
 
@@ -3206,19 +3346,19 @@ namespace NativeVcrdbCrosshair
         {
             Panel page = NewPage();
             int px = 28;
-            MakeHeader(page, "Yardım", px, 16);
+            MakeHeader(page, UiText.Get("Yardım"), px, 16);
             Label help = new Label();
             help.Text =
-                "01   TASARLA\n" +
-                "Nişangâh sayfasında renk, merkez noktası ve çizgileri ayarla.\n" +
-                "Sağdaki vizörle sonucu farklı zeminlerde gör.\n\n" +
-                "02   KAYDET VE PAYLAŞ\n" +
-                "Profil Galerisi'nden bir tasarım seç veya kendi profilini kaydet.\n" +
-                "Ayarlar sayfasındaki kodu paylaşarak tasarımı taşıyabilirsin.\n\n" +
-                "03   OYUNA DÖN\n" +
-                "Tepsiye Gizle, editörü kapatmadan arka plana alır.\n" +
-                "Bildirim alanındaki simgeye çift tıklayarak geri dön.\n\n" +
-                "Nişangâh görünmüyorsa Ekran ve Katman sayfasını kontrol et.";
+                UiText.Get("01   TASARLA\n") +
+                UiText.Get("Nişangâh sayfasında renk, merkez noktası ve çizgileri ayarla.\n") +
+                UiText.Get("Sağdaki vizörle sonucu farklı zeminlerde gör.\n\n") +
+                UiText.Get("02   KAYDET VE PAYLAŞ\n") +
+                UiText.Get("Profil Galerisi'nden bir tasarım seç veya kendi profilini kaydet.\n") +
+                UiText.Get("Ayarlar sayfasındaki kodu paylaşarak tasarımı taşıyabilirsin.\n\n") +
+                UiText.Get("03   OYUNA DÖN\n") +
+                UiText.Get("Tepsiye Gizle, editörü kapatmadan arka plana alır.\n") +
+                UiText.Get("Bildirim alanındaki simgeye çift tıklayarak geri dön.\n\n") +
+                UiText.Get("Nişangâh görünmüyorsa Ekran ve Katman sayfasını kontrol et.");
             help.ForeColor = Theme.Text; help.Font = new Font("Segoe UI", 9.75F);
             help.AutoSize = false; help.Size = new Size(CONTENT_W - px - 20, BODY_H - 70);
             help.Location = new Point(px, 78);
@@ -3344,7 +3484,7 @@ namespace NativeVcrdbCrosshair
             config.Settings = settings;
             if (!dirty) return;
             if (ConfigManager.Save(config)) dirty = false;
-            else SetNotice("Ayarlar kaydedilemedi. Uygulama veri klasörüne yazma iznini kontrol et.");
+            else SetNotice(UiText.Get("Ayarlar kaydedilemedi. Uygulama veri klasörüne yazma iznini kontrol et."));
         }
 
         // ---------- HOTKEY ----------
@@ -3386,7 +3526,7 @@ namespace NativeVcrdbCrosshair
         {
             if (config.HoldVisibility)
             {
-                SetNotice("Basılı tutma açık. Gösterme kısayoluna basılı tut.");
+                SetNotice(UiText.Get("Basılı tutma açık. Gösterme kısayoluna basılı tut."));
                 return;
             }
             SetCrosshairVisible(!crosshairVisible);
@@ -3407,7 +3547,7 @@ namespace NativeVcrdbCrosshair
         private void RebuildTrayMenu()
         {
             ContextMenu menu = new ContextMenu();
-            menu.MenuItems.Add("Ayarları Aç", delegate (object s, EventArgs e) { ShowFromTray(); });
+            menu.MenuItems.Add(UiText.Get("Ayarları Aç"), delegate (object s, EventArgs e) { ShowFromTray(); });
             overlayMenuItem = new MenuItem();
             overlayMenuItem.Click += OnStatusToggle;
             UpdateOverlayMenuText();
@@ -3416,9 +3556,9 @@ namespace NativeVcrdbCrosshair
             activeGameMenu = new MenuItem(activeTitle ?? "") { Enabled = false, Visible = activeTitle != null };
             menu.MenuItems.Add(activeGameMenu);
 
-            MenuItem profilesItem = new MenuItem("Profiller");
+            MenuItem profilesItem = new MenuItem(UiText.Get("Profiller"));
             List<string> profiles = ConfigManager.ListProfiles();
-            if (profiles.Count == 0) { MenuItem none = new MenuItem("(boş)"); none.Enabled = false; profilesItem.MenuItems.Add(none); }
+            if (profiles.Count == 0) { MenuItem none = new MenuItem(UiText.Get("(boş)")); none.Enabled = false; profilesItem.MenuItems.Add(none); }
             else foreach (string pn in profiles)
             {
                 string nameCopy = pn;
@@ -3430,7 +3570,7 @@ namespace NativeVcrdbCrosshair
             }
             menu.MenuItems.Add(profilesItem);
             menu.MenuItems.Add("-");
-            menu.MenuItems.Add("Çıkış", delegate (object s, EventArgs e) { Application.Exit(); });
+            menu.MenuItems.Add(UiText.Get("Çıkış"), delegate (object s, EventArgs e) { Application.Exit(); });
             ContextMenu previous = trayIcon.ContextMenu;
             trayIcon.ContextMenu = menu;
             if (previous != null) previous.Dispose();
@@ -3440,8 +3580,8 @@ namespace NativeVcrdbCrosshair
         {
             if (overlayMenuItem == null) return;
             overlayMenuItem.Enabled = !config.HoldVisibility;
-            overlayMenuItem.Text = config.HoldVisibility ? "Nişangâh: Basılı Tut" :
-                crosshairVisible ? "Nişangâhı Gizle" : "Nişangâhı Göster";
+            overlayMenuItem.Text = config.HoldVisibility ? UiText.Get("Nişangâh: Basılı Tut") :
+                crosshairVisible ? UiText.Get("Nişangâhı Gizle") : UiText.Get("Nişangâhı Göster");
         }
 
         private void ShowFromTray()

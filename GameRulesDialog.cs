@@ -15,10 +15,16 @@ namespace NativeVcrdbCrosshair
 
         internal readonly Dictionary<string, string> Rules;
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Theme.ApplyDialogFrame(Handle);
+        }
+
         internal GameRulesDialog(Dictionary<string, string> current, List<string> profiles)
         {
             Rules = new Dictionary<string, string>(current, StringComparer.OrdinalIgnoreCase);
-            Text = "Oyuna özel profiller";
+            Text = UiText.Get("Oyuna özel profiller");
             ClientSize = new Size(510, 435);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -26,12 +32,12 @@ namespace NativeVcrdbCrosshair
             BackColor = Theme.BgPanel;
             ForeColor = Theme.Text;
 
-            AddLabel("Oyun ön plandayken bağlı profil kullanılır. Oyundan çıkınca editördeki tasarım geri gelir.", 22, 15, 466, 42);
-            AddLabel("Bağlı oyunlar", 22, 65, 466, 19);
+            AddLabel(UiText.Get("Oyun ön plandayken bağlı profil kullanılır. Oyundan çıkınca editördeki tasarım geri gelir."), 22, 15, 466, 42);
+            AddLabel(UiText.Get("Bağlı oyunlar"), 22, 65, 466, 19);
             rules = new ListBox
             {
                 Bounds = new Rectangle(22, 86, 466, 125), BackColor = Theme.BgPanelAlt,
-                ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, AccessibleName = "Bağlı oyunlar"
+                ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, AccessibleName = UiText.Get("Bağlı oyunlar")
             };
             rules.SelectedIndexChanged += delegate
             {
@@ -42,22 +48,22 @@ namespace NativeVcrdbCrosshair
             };
             Controls.Add(rules);
 
-            AddLabel("Oyun dosyası (.exe)", 22, 221, 190, 20);
+            AddLabel(UiText.Get("Oyun dosyası (.exe)"), 22, 221, 190, 20);
             executable = new TextBox
             {
                 Bounds = new Rectangle(22, 245, 244, 28), BackColor = Theme.BgPanelAlt,
-                ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, AccessibleName = "Oyun dosyası adı", MaxLength = 220
+                ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, AccessibleName = UiText.Get("Oyun dosyası adı"), MaxLength = 220
             };
             Controls.Add(executable);
-            ButtonAt("Dosya seç", 273, 243, 91).Click += ChooseExecutable;
-            ButtonAt("Bağı kaldır", 370, 243, 118).Click += RemoveRule;
+            ButtonAt(UiText.Get("Dosya seç"), 273, 243, 91).Click += ChooseExecutable;
+            ButtonAt(UiText.Get("Bağı kaldır"), 370, 243, 118).Click += RemoveRule;
 
-            AddLabel("Kayıtlı profil", 22, 284, 230, 18);
+            AddLabel(UiText.Get("Kayıtlı profil"), 22, 284, 230, 18);
             profile = new ComboBox
             {
                 Bounds = new Rectangle(22, 306, 244, 28), DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat,
                 DrawMode = DrawMode.OwnerDrawFixed,
-                BackColor = Theme.BgPanelAlt, ForeColor = Theme.Text, AccessibleName = "Kayıtlı profil"
+                BackColor = Theme.BgPanelAlt, ForeColor = Theme.Text, AccessibleName = UiText.Get("Kayıtlı profil")
             };
             profile.DrawItem += delegate(object sender, DrawItemEventArgs e)
             {
@@ -71,20 +77,20 @@ namespace NativeVcrdbCrosshair
             foreach (var name in profiles) profile.Items.Add(name);
             if (profile.Items.Count > 0) profile.SelectedIndex = 0;
             Controls.Add(profile);
-            var bind = ButtonAt("Bağla / Güncelle", 273, 304, 215);
+            var bind = ButtonAt(UiText.Get("Bağla / Güncelle"), 273, 304, 215);
             bind.Click += BindRule;
             bind.Enabled = profile.Items.Count > 0;
-            feedback = AddLabel(profile.Items.Count == 0 ? "Önce Profil Galerisi’nden bir tasarım kaydet." : "",
+            feedback = AddLabel(profile.Items.Count == 0 ? UiText.Get("Önce Profil Galerisi’nden bir tasarım kaydet.") : "",
                 22, 345, 466, 33);
 
-            var save = ButtonAt("Kaydet", 391, 387, 97);
+            var save = ButtonAt(UiText.Get("Kaydet"), 391, 387, 97);
             save.Ghost = false;
             save.Click += delegate { DialogResult = DialogResult.OK; Close(); };
             var cancel = new Button { DialogResult = DialogResult.Cancel, TabStop = false };
             CancelButton = cancel;
             cancel.Visible = false;
             Controls.Add(cancel);
-            ButtonAt("Vazgeç", 285, 387, 96).Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
+            ButtonAt(UiText.Get("Vazgeç"), 285, 387, 96).Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
             ReloadRules(null);
         }
 
@@ -111,7 +117,7 @@ namespace NativeVcrdbCrosshair
 
         private void ChooseExecutable(object sender, EventArgs e)
         {
-            using (var dialog = new OpenFileDialog { Filter = "Windows uygulaması (*.exe)|*.exe", CheckFileExists = true })
+            using (var dialog = new OpenFileDialog { Filter = UiText.Get("Windows uygulaması (*.exe)|*.exe"), CheckFileExists = true })
                 if (dialog.ShowDialog(this) == DialogResult.OK) executable.Text = Path.GetFileName(dialog.FileName);
         }
 
@@ -120,19 +126,19 @@ namespace NativeVcrdbCrosshair
             string name = executable.Text.Trim();
             if (!GameProfileWatcher.IsExecutableName(name) || profile.SelectedItem == null)
             {
-                feedback.Text = "Geçerli bir .exe adı ve kayıtlı bir profil seç.";
+                feedback.Text = UiText.Get("Geçerli bir .exe adı ve kayıtlı bir profil seç.");
                 feedback.ForeColor = Glass.Warning;
                 return;
             }
             if (!Rules.ContainsKey(name) && Rules.Count >= 250)
             {
-                feedback.Text = "En çok 250 oyun bağı kullanılabilir.";
+                feedback.Text = UiText.Get("En çok 250 oyun bağı kullanılabilir.");
                 feedback.ForeColor = Glass.Warning;
                 return;
             }
             Rules[name] = (string)profile.SelectedItem;
             ReloadRules(name);
-            feedback.Text = "Bağ hazır. Uygulamak için Kaydet’e bas.";
+            feedback.Text = UiText.Get("Bağ hazır. Uygulamak için Kaydet’e bas.");
             feedback.ForeColor = Glass.Success;
         }
 
@@ -143,7 +149,7 @@ namespace NativeVcrdbCrosshair
             Rules.Remove(entry.Executable);
             ReloadRules(null);
             executable.Clear();
-            feedback.Text = "Bağ kaldırıldı. Uygulamak için Kaydet’e bas.";
+            feedback.Text = UiText.Get("Bağ kaldırıldı. Uygulamak için Kaydet’e bas.");
             feedback.ForeColor = Glass.Success;
         }
 
