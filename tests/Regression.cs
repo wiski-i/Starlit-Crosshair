@@ -28,6 +28,94 @@ internal static class Regression
         return "VCRDB-" + Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
     }
 
+    private static void TestSecondInstanceWarning()
+    {
+        var config = new AppConfig { EnglishUi = true, Accent = AccentTheme.Cyan, Material = GlassMaterial.Technical };
+        Check(ConfigManager.Save(config), "Save second-instance theme fixture.");
+        Theme.ApplyAccent(AccentTheme.Orange);
+        Glass.Material = GlassMaterial.Gloss;
+        UiText.UseEnglish = false;
+        using (var ready = new System.Threading.ManualResetEvent(false))
+        using (var release = new System.Threading.ManualResetEvent(false))
+        {
+            bool acquired = false;
+            var owner = new System.Threading.Thread(delegate()
+            {
+                using (var mutex = new System.Threading.Mutex(false, @"Local\VCRDB.Crosshair"))
+                {
+                    try { acquired = mutex.WaitOne(3000); }
+                    catch (System.Threading.AbandonedMutexException) { acquired = true; }
+                    ready.Set();
+                    if (!acquired) return;
+                    release.WaitOne();
+                    mutex.ReleaseMutex();
+                }
+            });
+            owner.Start();
+            ready.WaitOne();
+            if (!acquired)
+            {
+                owner.Join();
+                throw new InvalidOperationException("Close the running Crosshair application before testing the second-instance warning.");
+            }
+            bool seen = false, themed = false;
+            EventHandler inspect = delegate
+            {
+                if (Application.OpenForms.Count == 0) return;
+                seen = true;
+                themed = UiText.UseEnglish && Theme.Current == config.Accent && Glass.Material == config.Material;
+                Application.OpenForms[0].Close();
+            };
+            Application.Idle += inspect;
+            try { NativeVcrdbCrosshair.Program.Main(); }
+            finally
+            {
+                Application.Idle -= inspect;
+                release.Set();
+                owner.Join();
+            }
+            Check(seen && themed, "Second-instance warning loads the saved language, accent and material before display.");
+        }
+        Check(ConfigManager.Save(new AppConfig { HkKey = Keys.F20, HkShift = true }), "Restore UI fixture.");
+        Console.WriteLine("PASS: second-instance warning uses the saved theme.");
+    }
+
+    private static void CheckShareCode(MainForm form, string operation)
+    {
+        Check(Field<TextBox>(form, "shareOutBox").Text == Field<VcrdbSettings>(form, "settings").ToShareCode(),
+            operation + " refreshes the displayed share code.");
+    }
+
+    private static void TestShareCodeSynchronization()
+    {
+        Check(ConfigManager.Save(new AppConfig { HkKey = Keys.F20, HkShift = true }), "Prepare share-code fixture.");
+        using (var form = new MainForm(new Size(2000, 1000)))
+        {
+            form.Show();
+            Pump();
+            Call(form, "SelectPage", 4, false);
+            var imported = new VcrdbSettings { Color = Color.Magenta, Scale = 137, OffsetX = 23 };
+            Field<TextBox>(form, "shareInBox").Text = imported.ToShareCode();
+            Call(form, "OnImportCode", form, EventArgs.Empty);
+            Check(Field<VcrdbSettings>(form, "settings").ToShareCode() == imported.ToShareCode(), "Import applies the design.");
+            CheckShareCode(form, "Import");
+            Call(form, "ChangeHistory", false);
+            CheckShareCode(form, "Undo");
+            Call(form, "ChangeHistory", true);
+            CheckShareCode(form, "Redo");
+            Call(form, "ApplySettingsObject", new VcrdbSettings());
+            CheckShareCode(form, "Reset");
+            ConfigManager.SaveProfile("Share-code fixture", imported);
+            Call(form, "SelectPage", 1, false);
+            Call(form, "ApplySettingsObject", ConfigManager.LoadProfile("Share-code fixture"));
+            CheckShareCode(form, "Saved profile applied from gallery");
+            Call(form, "ChangeHistory", false);
+            CheckShareCode(form, "Undo while settings page is hidden");
+            ConfigManager.DeleteProfile("Share-code fixture");
+            form.Close();
+        }
+        Console.WriteLine("PASS: import, undo, redo, reset and saved profiles keep the share code current.");
+    }
     private static void TestSettings()
     {
         VcrdbSettings value;
@@ -649,27 +737,29 @@ internal static class Regression
         ConfigManager.ProfilesDir = Path.Combine(data, "profiles");
         try
         {
+            TestSecondInstanceWarning();
+            TestShareCodeSynchronization();
+            if (args.Length == 1 && args[0] == "--ui-regression") return 0;
             TestSettings();
             TestShapesAndPack();
             TestWorkflowData();
             TestGeometry();
-            TestDesktopLayer();
-            TestWindow(args.Length == 0 ? null : args[0]);
+            if (args.Length > 0 && args[0] == "--offscreen")
+                Console.WriteLine("SKIP: desktop pixel capture requires an active desktop; offscreen run requested.");
+            else TestDesktopLayer();
+            string screenshots = args.Length == 0 ? null : args[args.Length - 1];
+            if (screenshots == "--offscreen") screenshots = null;
+            if (screenshots != null) Directory.CreateDirectory(screenshots);
+            TestWindow(screenshots);
             TestGameProfiles();
-            TestWorkflowWindow(args.Length == 0 ? null : args[0]);
-            Console.WriteLine("PASS: settings, profiles, geometry, Windows compositing, click-through, shortcut rollback, rounded controls, background rendering, shapes, profile packages, foreground bindings, library, calibration, hold mode, history and tray.");
+            TestWorkflowWindow(screenshots);
+            Console.WriteLine("PASS: settings, profiles, geometry, shortcut rollback, rounded controls, background rendering, shapes, profile packages, foreground bindings, library, calibration, hold mode, history and tray. See SKIP messages for desktop limitations.");
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         finally
         {
-            File.Delete(ConfigManager.ConfigPath);
-            if (Directory.Exists(ConfigManager.ProfilesDir))
-            {
-                File.Delete(Path.Combine(ConfigManager.ProfilesDir, "Pembe nişangâh.txt"));
-                Directory.Delete(ConfigManager.ProfilesDir);
-            }
-            if (Directory.Exists(data)) Directory.Delete(data);
+            if (Directory.Exists(data)) Directory.Delete(data, true);
         }
     }
 }

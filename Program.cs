@@ -57,7 +57,10 @@ namespace NativeVcrdbCrosshair
                 catch (AbandonedMutexException) { acquired = true; }
                 if (!acquired)
                 {
-                    UiText.UseEnglish = ConfigManager.Load().EnglishUi;
+                    var config = ConfigManager.Load();
+                    UiText.UseEnglish = config.EnglishUi;
+                    Theme.ApplyAccent(config.Accent);
+                    Glass.Material = config.Material;
                     DarkMessage.Show(UiText.Get("Crosshair zaten açık. Bildirim alanındaki simgeyi kullan."), "VCRDB Crosshair");
                     return;
                 }
@@ -3432,6 +3435,7 @@ namespace NativeVcrdbCrosshair
             if (tgTShape != null) tgTShape.SetCheckedSilent(settings.TShape);
             if (tgPulse != null) tgPulse.SetCheckedSilent(settings.Pulse);
 
+            if (shareOutBox != null) shareOutBox.Text = settings.ToShareCode();
             if (colorPreviewBar != null) colorPreviewBar.BackColor = settings.Color;
             if (colorMessage != null) colorMessage.Text = "";
             if (hexBox != null) hexBox.Text = "#" + (settings.Color.R.ToString("X2") + settings.Color.G.ToString("X2") + settings.Color.B.ToString("X2"));

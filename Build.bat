@@ -8,7 +8,7 @@ if not exist "%CSC%" (
     popd
     exit /b 1
 )
-"%CSC%" /nologo /codepage:65001 /optimize+ /target:winexe /win32manifest:app.manifest /win32icon:assets\Crosshair.ico /resource:assets\Crosshair-title.png,Crosshair.Title.png /out:OzelCrosshair.exe Program.cs Overlay.cs Glass.cs Optics.cs ProfilePack.cs GameProfiles.cs GameRulesDialog.cs VisibilityScenes.cs ProfileLibrary.cs UiText.cs Workflow.cs WorkflowDialogs.cs
+"%CSC%" /nologo /codepage:65001 /langversion:5 /warnaserror+ /optimize+ /target:winexe /win32manifest:app.manifest /win32icon:assets\Crosshair.ico /resource:assets\Crosshair-title.png,Crosshair.Title.png /out:OzelCrosshair.exe AssemblyInfo.cs Program.cs Overlay.cs Glass.cs Optics.cs ProfilePack.cs GameProfiles.cs GameRulesDialog.cs VisibilityScenes.cs ProfileLibrary.cs UiText.cs Workflow.cs WorkflowDialogs.cs
 set "RESULT=%ERRORLEVEL%"
 popd
 exit /b %RESULT%
